@@ -1,0 +1,62 @@
+{
+  "name": "@codemill-solutions/e-boekhouden-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for the e-Boekhouden REST API",
+  "license": "MIT",
+  "author": "CodeMill Solutions B.V.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "e-boekhouden",
+    "eboekhouden",
+    "accounting",
+    "boekhouden",
+    "rest",
+    "ai",
+    "agent",
+    "anthropic",
+    "claude"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/CodeMill-Solutions/e-boekhouden-mcp.git"
+  },
+  "homepage": "https://github.com/CodeMill-Solutions/e-boekhouden-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/CodeMill-Solutions/e-boekhouden-mcp/issues"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js",
+    "whoami": "npx tsx scripts/whoami.ts",
+    "list-administrations": "npx tsx scripts/list-administrations.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "axios": "^1.16.1",
+    "dotenv": "^16.6.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.19",
+    "prettier": "^3.8.3",
+    "tsx": "^4.22.3",
+    "typescript": "^5.9.3"
+  }
+}
