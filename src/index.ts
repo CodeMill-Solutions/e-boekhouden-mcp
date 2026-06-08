@@ -7,6 +7,7 @@ import { registerAdministrationTools } from './tools/administrations.js';
 import { registerLedgerTools } from './tools/ledgers.js';
 import { registerRelationTools } from './tools/relations.js';
 import { registerMutationTools } from './tools/mutations.js';
+import { registerMutationWriteTools } from './tools/mutations-write.js';
 import { registerInvoiceTools } from './tools/invoices.js';
 import { registerMasterDataTools } from './tools/masterdata.js';
 
@@ -54,6 +55,7 @@ registerAdministrationTools(server, client);
 registerLedgerTools(server, client);
 registerRelationTools(server, client);
 registerMutationTools(server, client);
+registerMutationWriteTools(server, client);
 registerInvoiceTools(server, client);
 registerMasterDataTools(server, client);
 
@@ -68,11 +70,17 @@ const credInfo =
     ? `${credentialsMap.size} administration credential set(s) loaded`
     : 'no credentials configured';
 
+const writesAllowed = ['true', '1', 'yes', 'on'].includes(
+  (process.env['EBOEKHOUDEN_ALLOW_WRITES'] ?? '').trim().toLowerCase(),
+);
+
 process.stderr.write(
-  `[e-boekhouden-mcp] Server started — 19 tools registered ` +
+  `[e-boekhouden-mcp] Server started — 20 tools registered ` +
     `(whoami, reload_credentials, list_administrations, get_linked_administrations, ` +
     `get_ledgers, get_ledger, get_ledger_balances, get_ledger_balance, ` +
     `get_relations, get_relation, get_mutations, get_mutation, get_outstanding_invoices, ` +
-    `get_invoices, get_invoice, get_products, get_product_groups, get_cost_centers, get_units). ` +
+    `get_invoices, get_invoice, get_products, get_product_groups, get_cost_centers, get_units, ` +
+    `create_purchase_mutation). ` +
+    `Writes: ${writesAllowed ? 'ENABLED (EBOEKHOUDEN_ALLOW_WRITES)' : 'disabled (read-only)'}. ` +
     `Default administration: ${defaultAdministration || '(none)'} — ${credInfo}\n`,
 );

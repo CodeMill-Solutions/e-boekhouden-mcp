@@ -6,11 +6,13 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server for the
 [e-Boekhouden](https://www.e-boekhouden.nl) **REST API**. It lets MCP clients
 (Claude, CodeMill, …) read your bookkeeping data — administrations, ledgers,
 relations, mutations, invoices and master data — through a small set of typed
-tools.
+tools, and create purchase invoices behind explicit safety guards.
 
 > Built on the modern REST API (`api.e-boekhouden.nl`, OpenAPI v1), **not** the
-> legacy SOAP API. v0.1.0 is **read-only**; write tools (creating mutations,
-> invoices, relations) are planned for a later release.
+> legacy SOAP API. All tools are **read-only by default**; the single write tool
+> (`create_purchase_mutation`) stays disabled unless you opt in with
+> `EBOEKHOUDEN_ALLOW_WRITES=true`, and even then runs as a dry-run until you pass
+> `confirm: true`. More write tools (sales invoices, relations) are planned.
 
 ---
 
@@ -121,7 +123,7 @@ If `whoami` returns your administration(s), you're ready.
 
 ---
 
-## Available tools (19)
+## Available tools (20)
 
 ### Auth & setup
 | Tool | Description |
@@ -159,6 +161,7 @@ If `whoami` returns your administration(s), you're ready.
 | `get_mutations` | List bookkeeping entries (filter by type, invoiceNumber, …). |
 | `get_mutation` | Single mutation with booking lines. |
 | `get_outstanding_invoices` | Outstanding invoices (openstaande posten); requires `credDeb` = `D` (receivables) or `C` (payables). |
+| `create_purchase_mutation` | **Write.** Create a purchase invoice (inkoopfactuur). Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
 
 ### Invoices (verkoopfacturen)
 | Tool | Description |
@@ -175,6 +178,83 @@ If `whoami` returns your administration(s), you're ready.
 | `get_units` | Units of measure. |
 
 List tools are auto-paginated (`limit`/`offset`) and accept a `maxItems` cap.
+
+---
+
+## Writing data
+
+The server is read-only out of the box. The one write tool,
+`create_purchase_mutation`, books a purchase invoice (inkoopfactuur) as a
+`type: 1` mutation (*Factuur ontvangen*) and is protected by two independent
+guards:
+
+1. **Environment gate** — writes are refused unless `EBOEKHOUDEN_ALLOW_WRITES`
+   is set to a truthy value (`true`/`1`/`yes`/`on`). When unset, the tool is
+   still listed (so agents can discover it) but every call returns
+   `blocked: true` together with the `plannedMutation` it *would* have sent.
+2. **Dry-run by default** — even with writes enabled, a call only books when
+   `confirm: true` is passed. Otherwise it returns `dryRun: true` and the
+   planned body for review.
+
+Enable writes in your client config:
+
+```json
+{
+  "mcpServers": {
+    "e-boekhouden": {
+      "command": "node",
+      "args": ["/absolute/path/to/e-boekhouden-mcp/dist/index.js"],
+      "env": {
+        "EBOEKHOUDEN_API_TOKEN": "your-secret-api-token",
+        "EBOEKHOUDEN_ADMINISTRATION": "demo",
+        "EBOEKHOUDEN_ALLOW_WRITES": "true"
+      }
+    }
+  }
+}
+```
+
+> All `env` values must be **strings** — use `"true"`, not `true`.
+
+### Booking model
+
+- Top-level `ledgerId` is the **creditor counter-account** (category `CRED`,
+  e.g. *Crediteuren*).
+- Each `rows[]` entry is a **cost line** with a purchase VAT code
+  (`HOOG_INK_21`, `LAAG_INK_9`, `VERL_INK`, `BU_EU_INK`, `GEEN`, …).
+- `inExVat` (`IN`/`EX`) says whether row `amount`s include VAT; the API then
+  computes the VAT amount.
+- Invoice numbers are unique per relation — a duplicate yields `MUT_019` /
+  `MUT_020`.
+
+### Payment term
+
+If you omit `termOfPayment`, the tool resolves it automatically: it reads the
+term configured on the relation, then falls back to a caller-supplied
+`termOfPaymentDefault`, then to e-Boekhouden's own default. The chosen source is
+reported as `termOfPaymentSource` (`explicit` / `relation` / `default` /
+`eboekhouden-default`). Note: the relation read endpoint omits the field when it
+is empty, so an unset term falls through to the next fallback.
+
+### Example (dry-run)
+
+```jsonc
+// create_purchase_mutation
+{
+  "relationId": 40994969,
+  "invoiceNumber": "68130134",
+  "date": "2026-05-28",
+  "ledgerId": 22206459,            // Crediteuren (CRED)
+  "inExVat": "IN",
+  "rows": [
+    { "ledgerId": 22206483, "vatCode": "HOOG_INK_21", "amount": 29.04, "description": "Boekhoudpakket" }
+  ]
+  // no "confirm" → returns the planned mutation without booking
+}
+```
+
+Add `"confirm": true` to actually book; the response then returns
+`written: true` and the new mutation `id`.
 
 ---
 
@@ -201,6 +281,7 @@ src/
     ledgers.ts             # get_ledger(s), balances
     relations.ts           # get_relation(s)
     mutations.ts           # get_mutation(s), outstanding invoices
+    mutations-write.ts     # create_purchase_mutation (gated write tool)
     invoices.ts            # get_invoice(s)
     masterdata.ts          # products, product groups, cost centers, units
 scripts/
@@ -215,9 +296,10 @@ acquires/renews the session token and retries once on a 401.
 
 ## Roadmap
 
-- **v0.1** — read-only MVP (this release).
-- **v0.2** — write tools: create mutations, invoices, relations, ledgers,
-  products, cost centers.
+- **v0.1** — read-only MVP plus the first gated write tool
+  (`create_purchase_mutation`).
+- **v0.2** — more write tools: sales invoices, relations, ledgers, products,
+  cost centers.
 
 ---
 
