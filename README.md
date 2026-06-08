@@ -3,8 +3,7 @@
 [![npm](https://img.shields.io/npm/v/@codemill-solutions/e-boekhouden-mcp)](https://www.npmjs.com/package/@codemill-solutions/e-boekhouden-mcp)
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server for the
-[e-Boekhouden](https://www.e-boekhouden.nl) **REST API**. It lets MCP clients
-(Claude, CodeMill, …) read your bookkeeping data — administrations, ledgers,
+[e-Boekhouden](https://www.e-boekhouden.nl) **REST API**. It lets MCP clients read your bookkeeping data — administrations, ledgers,
 relations, mutations, invoices and master data — through a small set of typed
 tools, and create purchase invoices behind explicit safety guards.
 

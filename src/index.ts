@@ -47,7 +47,7 @@ const client = new EboekhoudenClient(defaultAdministration, credentialsMap);
 
 const server = new McpServer({
   name: 'e-boekhouden-mcp',
-  version: '0.1.0',
+  version: '0.2.0',
 });
 
 registerAuthTools(server, client);

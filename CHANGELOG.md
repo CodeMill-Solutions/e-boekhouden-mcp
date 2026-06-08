@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-08
+
+### Added
+
+- **First write tool** `create_purchase_mutation` for booking purchase
+  invoices (type 1, _Factuur ontvangen_) via `POST /v1/mutation`, guarded by
+  two safety layers: the `EBOEKHOUDEN_ALLOW_WRITES` environment gate
+  (read-only by default) and a dry-run that requires `confirm: true` to
+  actually book.
+- Auto-fill of `termOfPayment` from the relation, with a
+  `termOfPaymentDefault` fallback; the resolved `termOfPaymentSource` is
+  reported back.
+- `EBOEKHOUDEN_ALLOW_WRITES` documented in `.env.example`; write status is
+  now surfaced in the startup log (tool count 19 → 20).
+
 ## [0.1.0] - 2026-06-01
 
 Initial read-only release built on the e-Boekhouden REST API
@@ -31,5 +46,6 @@ Initial read-only release built on the e-Boekhouden REST API
   `get_cost_centers`, `get_units`.
 - Standalone probe scripts: `npm run whoami`, `npm run list-administrations`.
 
-[Unreleased]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/releases/tag/v0.1.0
