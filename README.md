@@ -123,7 +123,7 @@ If `whoami` returns your administration(s), you're ready.
 
 ---
 
-## Available tools (20)
+## Available tools (24)
 
 ### Auth & setup
 | Tool | Description |
@@ -154,6 +154,7 @@ If `whoami` returns your administration(s), you're ready.
 |---|---|
 | `get_relations` | List customers/suppliers (filter by code, type, name, …). |
 | `get_relation` | Single relation by id. |
+| `create_relation` | **Write.** Create a relation (supplier/customer). Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
 
 ### Mutations (mutaties / boekingen)
 | Tool | Description |
@@ -162,12 +163,15 @@ If `whoami` returns your administration(s), you're ready.
 | `get_mutation` | Single mutation with booking lines. |
 | `get_outstanding_invoices` | Outstanding invoices (openstaande posten); requires `credDeb` = `D` (receivables) or `C` (payables). |
 | `create_purchase_mutation` | **Write.** Create a purchase invoice (inkoopfactuur). Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
+| `create_payment` | **Write.** Register a payment against a purchase invoice (mark it paid, type 4). Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
+| `create_money_spent` | **Write.** Book money spent directly from a bank/cash account (Geld uitgegeven, type 6) — expenses without a purchase invoice. Gated; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
 
 ### Invoices (verkoopfacturen)
 | Tool | Description |
 |---|---|
 | `get_invoices` | List sales invoices. |
 | `get_invoice` | Single sales invoice with lines. |
+| `create_sales_invoice` | **Write.** Create a sales invoice (verkoopfactuur, POST /v1/invoice). Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
 
 ### Master data
 | Tool | Description |
@@ -183,9 +187,12 @@ List tools are auto-paginated (`limit`/`offset`) and accept a `maxItems` cap.
 
 ## Writing data
 
-The server is read-only out of the box. The one write tool,
-`create_purchase_mutation`, books a purchase invoice (inkoopfactuur) as a
-`type: 1` mutation (*Factuur ontvangen*) and is protected by two independent
+The server is read-only out of the box. The write tools —
+`create_purchase_mutation` (purchase invoice / inkoopfactuur, `type: 1`),
+`create_payment` (payment against a purchase invoice, `type: 4`),
+`create_money_spent` (expense paid directly, *Geld uitgegeven*, `type: 6`),
+`create_sales_invoice` (verkoopfactuur via the invoicing module) and
+`create_relation` (supplier/customer) — are each protected by two independent
 guards:
 
 1. **Environment gate** — writes are refused unless `EBOEKHOUDEN_ALLOW_WRITES`
@@ -256,6 +263,36 @@ is empty, so an unset term falls through to the next fallback.
 Add `"confirm": true` to actually book; the response then returns
 `written: true` and the new mutation `id`.
 
+### Registering payments
+
+`create_payment` marks a purchase invoice paid by booking a `type: 4` mutation
+(*Factuurbetaling verstuurd*). It links to the outstanding invoice the same way
+the web UI's "open post" row does — by `invoiceNumber` + `relationId` + amount:
+
+- Top-level `ledgerId` (here `bankLedgerId`) is the **bank account** the payment
+  left from (category `FIN`, e.g. `1010`). It's required — an administration
+  usually has several FIN accounts (Kas + bank).
+- The single row books against the **creditor** account (category `CRED`). It is
+  auto-resolved when `creditorLedgerId` is omitted.
+- The linking `invoiceNumber` and `relationId` are placed **on the row** (not
+  only at the mutation level) — the API returns `MUT_120` / `MUT_112` otherwise.
+- `amount` is the full paid total; `inExVat` is `EX`; VAT code `GEEN`.
+
+```jsonc
+// create_payment
+{
+  "relationId": 71254172,
+  "invoiceNumber": "2026142893",
+  "amount": 11.69,
+  "date": "2026-06-01",
+  "bankLedgerId": 22206452   // 1010 Bank
+  // no "confirm" → returns the planned payment without booking
+}
+```
+
+Note: mutations cannot be edited or deleted via the API (no `PATCH`/`DELETE` on
+`/v1/mutation`); corrections are made in the e-Boekhouden web UI.
+
 ---
 
 ## Testing
@@ -280,9 +317,12 @@ src/
     administrations.ts     # list_administrations, get_linked_administrations
     ledgers.ts             # get_ledger(s), balances
     relations.ts           # get_relation(s)
+    relations-write.ts     # create_relation (gated write tool)
+    write-helpers.ts       # shared write gate + body helpers
     mutations.ts           # get_mutation(s), outstanding invoices
-    mutations-write.ts     # create_purchase_mutation (gated write tool)
+    mutations-write.ts     # create_purchase_mutation + create_payment + create_money_spent
     invoices.ts            # get_invoice(s)
+    invoices-write.ts      # create_sales_invoice (gated write tool)
     masterdata.ts          # products, product groups, cost centers, units
 scripts/
   whoami.ts                # standalone auth probe
@@ -296,10 +336,11 @@ acquires/renews the session token and retries once on a 401.
 
 ## Roadmap
 
-- **v0.1** — read-only MVP plus the first gated write tool
-  (`create_purchase_mutation`).
-- **v0.2** — more write tools: sales invoices, relations, ledgers, products,
-  cost centers.
+- **v0.1** — read-only MVP plus gated write tools (`create_purchase_mutation`,
+  `create_payment`, `create_money_spent`, `create_sales_invoice`,
+  `create_relation`).
+- **v0.2** — more write tools: ledgers, products, cost centers; richer
+  sales-invoice options (email/PDF, direct debit).
 
 ---
 

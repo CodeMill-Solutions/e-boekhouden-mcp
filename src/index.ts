@@ -6,9 +6,11 @@ import { registerAuthTools } from './tools/auth.js';
 import { registerAdministrationTools } from './tools/administrations.js';
 import { registerLedgerTools } from './tools/ledgers.js';
 import { registerRelationTools } from './tools/relations.js';
+import { registerRelationWriteTools } from './tools/relations-write.js';
 import { registerMutationTools } from './tools/mutations.js';
 import { registerMutationWriteTools } from './tools/mutations-write.js';
 import { registerInvoiceTools } from './tools/invoices.js';
+import { registerInvoiceWriteTools } from './tools/invoices-write.js';
 import { registerMasterDataTools } from './tools/masterdata.js';
 
 // ── Credentials ───────────────────────────────────────────────────────────────
@@ -54,9 +56,11 @@ registerAuthTools(server, client);
 registerAdministrationTools(server, client);
 registerLedgerTools(server, client);
 registerRelationTools(server, client);
+registerRelationWriteTools(server, client);
 registerMutationTools(server, client);
 registerMutationWriteTools(server, client);
 registerInvoiceTools(server, client);
+registerInvoiceWriteTools(server, client);
 registerMasterDataTools(server, client);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
@@ -75,12 +79,13 @@ const writesAllowed = ['true', '1', 'yes', 'on'].includes(
 );
 
 process.stderr.write(
-  `[e-boekhouden-mcp] Server started — 20 tools registered ` +
+  `[e-boekhouden-mcp] Server started — 24 tools registered ` +
     `(whoami, reload_credentials, list_administrations, get_linked_administrations, ` +
     `get_ledgers, get_ledger, get_ledger_balances, get_ledger_balance, ` +
-    `get_relations, get_relation, get_mutations, get_mutation, get_outstanding_invoices, ` +
-    `get_invoices, get_invoice, get_products, get_product_groups, get_cost_centers, get_units, ` +
-    `create_purchase_mutation). ` +
+    `get_relations, get_relation, create_relation, get_mutations, get_mutation, ` +
+    `get_outstanding_invoices, get_invoices, get_invoice, create_sales_invoice, get_products, ` +
+    `get_product_groups, get_cost_centers, get_units, create_purchase_mutation, create_payment, ` +
+    `create_money_spent). ` +
     `Writes: ${writesAllowed ? 'ENABLED (EBOEKHOUDEN_ALLOW_WRITES)' : 'disabled (read-only)'}. ` +
     `Default administration: ${defaultAdministration || '(none)'} — ${credInfo}\n`,
 );
