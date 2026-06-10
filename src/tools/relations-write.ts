@@ -1,8 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { EboekhoudenClient } from '../eboekhouden-client.js';
-import { ok, guard } from './result.js';
-import { writesEnabled, compact, WRITES_DISABLED_REASON } from './write-helpers.js';
+import { guard } from './result.js';
+import { compact, gatedWrite } from './write-helpers.js';
 
 /**
  * Register relation (relaties) write tools.
@@ -62,27 +62,14 @@ export function registerRelationWriteTools(server: McpServer, client: Eboekhoude
     async ({ confirm, administration, type, ...fields }) =>
       guard(async () => {
         const body = compact({ type: type ?? 'B', ...fields });
-
-        if (!writesEnabled()) {
-          return ok({ created: false, blocked: true, reason: WRITES_DISABLED_REASON, plannedRelation: body });
-        }
-
-        if (!confirm) {
-          return ok({
-            created: false,
-            dryRun: true,
-            message: 'Dry-run: nothing was created. Re-run with confirm: true to create this relation.',
-            plannedRelation: body,
-          });
-        }
-
-        const relation = await client.request({
-          administration,
-          method: 'POST',
-          path: '/relation',
+        return gatedWrite({
+          confirm,
+          statusKey: 'created',
+          plannedKey: 'plannedRelation',
+          resultKey: 'relation',
           body,
+          execute: () => client.request({ administration, method: 'POST', path: '/relation', body }),
         });
-        return ok({ created: true, relation });
       }),
   );
 }

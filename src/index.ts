@@ -12,6 +12,7 @@ import { registerMutationWriteTools } from './tools/mutations-write.js';
 import { registerInvoiceTools } from './tools/invoices.js';
 import { registerInvoiceWriteTools } from './tools/invoices-write.js';
 import { registerMasterDataTools } from './tools/masterdata.js';
+import { writesEnabled } from './tools/write-helpers.js';
 
 // ── Credentials ───────────────────────────────────────────────────────────────
 //
@@ -74,9 +75,7 @@ const credInfo =
     ? `${credentialsMap.size} administration credential set(s) loaded`
     : 'no credentials configured';
 
-const writesAllowed = ['true', '1', 'yes', 'on'].includes(
-  (process.env['EBOEKHOUDEN_ALLOW_WRITES'] ?? '').trim().toLowerCase(),
-);
+const writesAllowed = writesEnabled();
 
 process.stderr.write(
   `[e-boekhouden-mcp] Server started — 24 tools registered ` +

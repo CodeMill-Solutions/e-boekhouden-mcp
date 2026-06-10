@@ -293,6 +293,27 @@ the web UI's "open post" row does — by `invoiceNumber` + `relationId` + amount
 Note: mutations cannot be edited or deleted via the API (no `PATCH`/`DELETE` on
 `/v1/mutation`); corrections are made in the e-Boekhouden web UI.
 
+### Sales invoices
+
+`create_sales_invoice` posts to the invoicing module (`POST /v1/invoice`).
+`invoiceNumber` is optional — e-Boekhouden assigns the next number when omitted.
+`termOfPayment` is taken from the relation when omitted (then 14 days), reported
+as `termOfPaymentSource`.
+
+The invoicing module requires a `templateId` (invoice layout) and each line
+needs a revenue ledger; both are **administration-specific**, so this package
+ships no defaults. Supply them per call, or configure environment defaults:
+
+```dotenv
+EBOEKHOUDEN_INVOICE_TEMPLATE_ID=752296   # your invoice template id
+EBOEKHOUDEN_REVENUE_LEDGER_ID=22206462   # e.g. 8000 Omzet
+EBOEKHOUDEN_DEFAULT_UNIT_ID=3214082      # optional, e.g. "stuk"
+```
+
+A call that omits a required id without a configured default fails with a clear
+error telling you which id to supply. Find the ids via `get_invoice(s)` (template),
+`get_ledgers` (revenue) and `get_units`.
+
 ---
 
 ## Testing
@@ -336,11 +357,12 @@ acquires/renews the session token and retries once on a 401.
 
 ## Roadmap
 
-- **v0.1** — read-only MVP plus gated write tools (`create_purchase_mutation`,
-  `create_payment`, `create_money_spent`, `create_sales_invoice`,
-  `create_relation`).
-- **v0.2** — more write tools: ledgers, products, cost centers; richer
-  sales-invoice options (email/PDF, direct debit).
+- **v0.1** — read-only MVP.
+- **v0.2** — first gated write tool (`create_purchase_mutation`).
+- **v0.3** — write suite: `create_payment`, `create_money_spent`,
+  `create_sales_invoice`, `create_relation`, plus shared write helpers.
+- **v0.4** (planned) — more write tools (ledgers, products, cost centers) and
+  richer sales-invoice options (email/PDF, direct debit).
 
 ---
 
