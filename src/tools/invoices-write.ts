@@ -25,7 +25,7 @@ function envInt(name: string): number | undefined {
   const raw = process.env[name];
   if (raw === undefined || raw.trim() === '') return undefined;
   const n = Number(raw);
-  return Number.isFinite(n) ? n : undefined;
+  return Number.isInteger(n) && n > 0 ? n : undefined;
 }
 
 export function registerInvoiceWriteTools(server: McpServer, client: EboekhoudenClient): void {

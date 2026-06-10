@@ -23,8 +23,6 @@ with `confirm: true`.
   administration-specific `templateId` and revenue ledger are supplied per call
   or via `EBOEKHOUDEN_INVOICE_TEMPLATE_ID`, `EBOEKHOUDEN_REVENUE_LEDGER_ID` and
   `EBOEKHOUDEN_DEFAULT_UNIT_ID`.
-- `create_purchase_mutation` now auto-fills `termOfPayment` from the relation
-  (with a `termOfPaymentDefault` fallback), reported as `termOfPaymentSource`.
 
 ### Changed
 
@@ -38,7 +36,8 @@ with `confirm: true`.
 
 - **`create_purchase_mutation`** — the first write tool: book a purchase invoice
   (inkoopfactuur) as a type 1 mutation, behind the `EBOEKHOUDEN_ALLOW_WRITES`
-  env gate with dry-run/confirm.
+  env gate with dry-run/confirm. Auto-fills `termOfPayment` from the relation
+  (with a `termOfPaymentDefault` fallback), reported as `termOfPaymentSource`.
 
 ## [0.1.0] - 2026-06-01
 
