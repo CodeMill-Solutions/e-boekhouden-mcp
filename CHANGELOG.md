@@ -6,20 +6,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-09
+
+Adds a set of human-in-the-loop **write tools**. Every write tool is disabled
+unless `EBOEKHOUDEN_ALLOW_WRITES` is truthy, and runs as a dry-run until called
+with `confirm: true`.
+
+### Added
+
+- **`create_relation`** — create a supplier/customer (POST /v1/relation).
+- **`create_payment`** — register a payment against a purchase invoice (mark it
+  paid) as a type 4 mutation; links by `invoiceNumber` + `relationId` on the row.
+- **`create_money_spent`** — book an expense paid directly, without a purchase
+  invoice (type 6, *Geld uitgegeven*).
+- **`create_sales_invoice`** — create a sales invoice (POST /v1/invoice). The
+  administration-specific `templateId` and revenue ledger are supplied per call
+  or via `EBOEKHOUDEN_INVOICE_TEMPLATE_ID`, `EBOEKHOUDEN_REVENUE_LEDGER_ID` and
+  `EBOEKHOUDEN_DEFAULT_UNIT_ID`.
+
+### Changed
+
+- Shared write helpers (`write-helpers.ts`): a single `gatedWrite` applies the
+  env gate + dry-run/confirm guards across all write tools; shared
+  `resolveTermOfPayment` and ledger-resolution helpers.
+
 ## [0.2.0] - 2026-06-08
 
 ### Added
 
-- **First write tool** `create_purchase_mutation` for booking purchase
-  invoices (type 1, _Factuur ontvangen_) via `POST /v1/mutation`, guarded by
-  two safety layers: the `EBOEKHOUDEN_ALLOW_WRITES` environment gate
-  (read-only by default) and a dry-run that requires `confirm: true` to
-  actually book.
-- Auto-fill of `termOfPayment` from the relation, with a
-  `termOfPaymentDefault` fallback; the resolved `termOfPaymentSource` is
-  reported back.
-- `EBOEKHOUDEN_ALLOW_WRITES` documented in `.env.example`; write status is
-  now surfaced in the startup log (tool count 19 → 20).
+- **`create_purchase_mutation`** — the first write tool: book a purchase invoice
+  (inkoopfactuur) as a type 1 mutation, behind the `EBOEKHOUDEN_ALLOW_WRITES`
+  env gate with dry-run/confirm. Auto-fills `termOfPayment` from the relation
+  (with a `termOfPaymentDefault` fallback), reported as `termOfPaymentSource`.
 
 ## [0.1.0] - 2026-06-01
 
@@ -46,6 +64,7 @@ Initial read-only release built on the e-Boekhouden REST API
   `get_cost_centers`, `get_units`.
 - Standalone probe scripts: `npm run whoami`, `npm run list-administrations`.
 
-[Unreleased]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/releases/tag/v0.1.0
