@@ -14,6 +14,7 @@ import { writesEnabled, compact, gatedWrite, resolveTermOfPayment, resolveSingle
  */
 
 const PURCHASE_MUTATION_TYPE = 1; // Factuur ontvangen / invoice received
+const PAYMENT_RECEIVED_TYPE = 3; // Factuurbetaling ontvangen / invoice payment received
 const PAYMENT_SENT_TYPE = 4; // Factuurbetaling verstuurd / invoice payment sent
 const MONEY_SENT_TYPE = 6; // Geld uitgegeven / money spent
 
@@ -102,52 +103,65 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
     'create_payment',
     {
       description:
-        'Register a payment against a purchase invoice (mark it paid) as a type 4 mutation ' +
-        '(Factuurbetaling verstuurd) via POST /v1/mutation. WRITE TOOL — disabled unless the ' +
-        'server has EBOEKHOUDEN_ALLOW_WRITES=true. Dry-run by default: only books when ' +
-        '`confirm: true`. Links to the outstanding invoice by `invoiceNumber` + `relationId` ' +
-        '(both required on the row, else MUT_120 / MUT_112). The payment debits the creditor ' +
-        'account and credits the bank account; `amount` is the full paid total (incl. VAT). ' +
-        'If `creditorLedgerId` is omitted it is resolved from the single category-CRED ledger; ' +
-        '`bankLedgerId` is required (an administration usually has multiple FIN accounts).',
+        'Register a payment against an invoice via POST /v1/mutation. ' +
+        '`direction: "sent"` (default) marks a PURCHASE invoice paid (type 4, Factuurbetaling ' +
+        'verstuurd, books against the creditor account); `direction: "received"` marks a SALES ' +
+        'invoice paid (type 3, Factuurbetaling ontvangen, books against the debtor account). ' +
+        'WRITE TOOL — disabled unless EBOEKHOUDEN_ALLOW_WRITES=true. Dry-run by default: only ' +
+        'books when `confirm: true`. Links to the outstanding invoice by `invoiceNumber` + ' +
+        '`relationId` (both required on the row, else MUT_120 / MUT_112). `amount` is the full ' +
+        'paid total (incl. VAT). `contraLedgerId` (creditor for sent, debtor for received) is ' +
+        'auto-resolved from the single CRED/DEB ledger when omitted; `bankLedgerId` is required.',
       inputSchema: {
-        relationId: z.number().int().describe('Supplier relation id (same as on the invoice).'),
+        relationId: z.number().int().describe('Relation id (same as on the invoice).'),
         invoiceNumber: z.string().min(1).describe('Invoice number being paid (must match the outstanding invoice).'),
         amount: z.number().describe('Paid amount — full total incl. VAT.'),
         date: z
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be ISO format YYYY-MM-DD.')
           .describe('Payment date (bank transaction date) in ISO format YYYY-MM-DD.'),
-        bankLedgerId: z.number().int().describe('Bank ledger id the payment came from (category FIN).'),
-        creditorLedgerId: z.number().int().optional().describe('Creditor ledger id (category CRED). Auto-resolved when omitted.'),
+        bankLedgerId: z.number().int().describe('Bank ledger id (category FIN).'),
+        direction: z
+          .enum(['sent', 'received'])
+          .optional()
+          .describe('"sent" = pay a purchase invoice (type 4, default); "received" = received payment on a sales invoice (type 3).'),
+        contraLedgerId: z
+          .number()
+          .int()
+          .optional()
+          .describe('Counter account: creditor (sent) or debtor (received). Auto-resolved when omitted.'),
         description: z.string().optional().describe('Optional description (default "Betaling").'),
         confirm: z.boolean().optional().describe('Set true to actually book. When false/omitted, returns a dry-run preview only.'),
         administration: z.string().optional().describe('Credentials label. Defaults to EBOEKHOUDEN_ADMINISTRATION.'),
       },
     },
-    async ({ relationId, invoiceNumber, amount, date, bankLedgerId, creditorLedgerId, description, confirm, administration }) =>
+    async ({ relationId, invoiceNumber, amount, date, bankLedgerId, direction, contraLedgerId, description, confirm, administration }) =>
       guard(async () => {
-        // Resolve the creditor only when we'll actually write — keeps a blocked
-        // (writes-disabled) call from doing a needless ledger lookup.
-        let creditor = creditorLedgerId;
-        if (creditor === undefined && writesEnabled()) {
-          creditor = await resolveSingleLedger(client, administration, 'CRED', 'creditor');
+        const received = direction === 'received';
+        const type = received ? PAYMENT_RECEIVED_TYPE : PAYMENT_SENT_TYPE;
+        // Resolve the counter account only when we'll actually write — keeps a
+        // blocked (writes-disabled) call from doing a needless ledger lookup.
+        let contra = contraLedgerId;
+        if (contra === undefined && writesEnabled()) {
+          contra = received
+            ? await resolveSingleLedger(client, administration, 'DEB', 'debtor')
+            : await resolveSingleLedger(client, administration, 'CRED', 'creditor');
         }
         const desc = description ?? 'Betaling';
         const body = compact({
-          type: PAYMENT_SENT_TYPE,
+          type,
           date,
           ledgerId: bankLedgerId,
           invoiceNumber,
           description: desc,
           inExVat: 'EX',
           relationId,
-          // type-4 needs invoiceNumber AND relationId on the row (MUT_120 / MUT_112).
-          rows: [compact({ ledgerId: creditor, vatCode: 'GEEN', amount, invoiceNumber, relationId, description: desc })],
+          // payments need invoiceNumber AND relationId on the row (MUT_120 / MUT_112).
+          rows: [compact({ ledgerId: contra, vatCode: 'GEEN', amount, invoiceNumber, relationId, description: desc })],
         });
         return gatedWrite({
           confirm,
-          plannedKey: 'plannedPayment',
+          plannedKey: received ? 'plannedReceipt' : 'plannedPayment',
           resultKey: 'mutation',
           body,
           execute: () => client.request({ administration, method: 'POST', path: '/mutation', body }),

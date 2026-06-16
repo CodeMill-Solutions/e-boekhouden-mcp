@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { EboekhoudenClient } from '../eboekhouden-client.js';
 import { guard } from './result.js';
-import { compact, gatedWrite, resolveTermOfPayment } from './write-helpers.js';
+import { compact, gatedWrite, resolveTermOfPayment, resolveSingleLedger, writesEnabled } from './write-helpers.js';
 
 /**
  * Register sales-invoice (verkoopfactuur) write tools.
@@ -17,7 +17,13 @@ import { compact, gatedWrite, resolveTermOfPayment } from './write-helpers.js';
  *   - EBOEKHOUDEN_INVOICE_TEMPLATE_ID  (templateId)
  *   - EBOEKHOUDEN_REVENUE_LEDGER_ID    (item ledgerId)
  *   - EBOEKHOUDEN_DEFAULT_UNIT_ID      (item unitId, optional)
+ *   - EBOEKHOUDEN_DEBTOR_LEDGER_ID     (debtor ledger for processing, optional)
  * A clear error is thrown when a required id is neither passed nor configured.
+ *
+ * By default the invoice is also processed into the accounting (the "Factuur
+ * direct verwerken in de boekhouding" checkbox) by sending a `mutation` object
+ * with the debtor ledger. Without it the invoice stays a concept (not journaled,
+ * no open post). Pass `process: false` to create a concept invoice instead.
  */
 
 /** Parse a positive integer from an environment variable, or undefined. */
@@ -63,6 +69,15 @@ export function registerInvoiceWriteTools(server: McpServer, client: Eboekhouden
           .min(1)
           .describe('One or more invoice lines.'),
         invoiceNumber: z.string().optional().describe('Optional; e-Boekhouden auto-numbers when omitted.'),
+        process: z
+          .boolean()
+          .optional()
+          .describe('Process the invoice into the accounting (default true). False = create a concept invoice (not journaled).'),
+        debtorLedgerId: z
+          .number()
+          .int()
+          .optional()
+          .describe('Debtor ledger id for the processing mutation (or EBOEKHOUDEN_DEBTOR_LEDGER_ID). Auto-resolved when omitted.'),
         templateId: z.number().int().optional().describe('Invoice layout template id (or EBOEKHOUDEN_INVOICE_TEMPLATE_ID).'),
         termOfPayment: z.number().int().optional().describe('Payment term in days. Omit to take it from the relation.'),
         inExVat: z.enum(['IN', 'EX']).optional().describe('Item prices incl ("IN") or excl ("EX", default) VAT.'),
@@ -72,7 +87,7 @@ export function registerInvoiceWriteTools(server: McpServer, client: Eboekhouden
         administration: z.string().optional().describe('Credentials label. Defaults to EBOEKHOUDEN_ADMINISTRATION.'),
       },
     },
-    async ({ relationId, date, items, invoiceNumber, templateId, termOfPayment, inExVat, reference, text, confirm, administration }) =>
+    async ({ relationId, date, items, invoiceNumber, process, debtorLedgerId, templateId, termOfPayment, inExVat, reference, text, confirm, administration }) =>
       guard(async () => {
         const tpl = templateId ?? envInt('EBOEKHOUDEN_INVOICE_TEMPLATE_ID');
         if (tpl === undefined) {
@@ -103,6 +118,19 @@ export function registerInvoiceWriteTools(server: McpServer, client: Eboekhouden
         });
 
         const { term, source } = await resolveTermOfPayment(client, administration, relationId, termOfPayment, 14);
+
+        // Process into the accounting (the "direct verwerken" checkbox): sending a
+        // `mutation` object journals the invoice. Resolve the debtor ledger only
+        // when we'll actually write, to avoid a needless lookup on a blocked call.
+        let mutation: Record<string, unknown> | undefined;
+        if (process !== false) {
+          let debtor = debtorLedgerId ?? envInt('EBOEKHOUDEN_DEBTOR_LEDGER_ID');
+          if (debtor === undefined && writesEnabled()) {
+            debtor = await resolveSingleLedger(client, administration, 'DEB', 'debtor');
+          }
+          if (debtor !== undefined) mutation = { ledgerId: debtor };
+        }
+
         const body = compact({
           invoiceNumber,
           relationId,
@@ -112,6 +140,7 @@ export function registerInvoiceWriteTools(server: McpServer, client: Eboekhouden
           templateId: tpl,
           reference,
           text,
+          mutation,
           items: mappedItems,
         });
 
