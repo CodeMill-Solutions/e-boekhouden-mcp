@@ -6,6 +6,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-06-16
+
+First stable release. The read tools plus the gated write suite
+(`create_purchase_mutation`, `create_payment`, `create_money_spent`,
+`create_sales_invoice`, `create_relation`) are considered production-ready and
+the tool interfaces stable.
+
+### Added
+
+- **`create_payment` `direction`** — `"received"` registers a payment received on
+  a SALES invoice (type 3, Factuurbetaling ontvangen, books against the debtor
+  account); `"sent"` (default) keeps the existing purchase-invoice behaviour
+  (type 4). The counter account is auto-resolved from the single CRED/DEB ledger.
+- **`create_sales_invoice` processing** — the invoice is now processed into the
+  accounting by default (the "Factuur direct verwerken in de boekhouding"
+  option) by sending a `mutation` object with the debtor ledger, so it is
+  journaled and becomes an open post. New `process: false` creates a concept
+  invoice; the debtor ledger is auto-resolved or set via `debtorLedgerId` /
+  `EBOEKHOUDEN_DEBTOR_LEDGER_ID`.
+
+### Changed
+
+- `create_payment`: the optional `creditorLedgerId` parameter is renamed to
+  `contraLedgerId` (creditor for `sent`, debtor for `received`).
+
 ## [0.3.0] - 2026-06-09
 
 Adds a set of human-in-the-loop **write tools**. Every write tool is disabled
@@ -64,7 +89,8 @@ Initial read-only release built on the e-Boekhouden REST API
   `get_cost_centers`, `get_units`.
 - Standalone probe scripts: `npm run whoami`, `npm run list-administrations`.
 
-[Unreleased]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/releases/tag/v0.1.0

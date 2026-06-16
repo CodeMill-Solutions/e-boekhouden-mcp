@@ -162,7 +162,7 @@ If `whoami` returns your administration(s), you're ready.
 | `get_mutation` | Single mutation with booking lines. |
 | `get_outstanding_invoices` | Outstanding invoices (openstaande posten); requires `credDeb` = `D` (receivables) or `C` (payables). |
 | `create_purchase_mutation` | **Write.** Create a purchase invoice (inkoopfactuur). Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
-| `create_payment` | **Write.** Register a payment against a purchase invoice (mark it paid, type 4). Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
+| `create_payment` | **Write.** Register a payment against an invoice — purchase (sent, type 4) or sales (`direction: "received"`, type 3). Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
 | `create_money_spent` | **Write.** Book money spent directly from a bank/cash account (Geld uitgegeven, type 6) — expenses without a purchase invoice. Gated; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
 
 ### Invoices (verkoopfacturen)
@@ -264,15 +264,19 @@ Add `"confirm": true` to actually book; the response then returns
 
 ### Registering payments
 
-`create_payment` marks a purchase invoice paid by booking a `type: 4` mutation
-(*Factuurbetaling verstuurd*). It links to the outstanding invoice the same way
-the web UI's "open post" row does — by `invoiceNumber` + `relationId` + amount:
+`create_payment` marks an invoice paid. `direction: "sent"` (default) pays a
+**purchase** invoice (`type: 4`, *Factuurbetaling verstuurd*, books against the
+creditor account); `direction: "received"` registers a payment received on a
+**sales** invoice (`type: 3`, *Factuurbetaling ontvangen*, books against the
+debtor account). It links to the outstanding invoice the same way the web UI's
+"open post" row does — by `invoiceNumber` + `relationId` + amount:
 
-- Top-level `ledgerId` (here `bankLedgerId`) is the **bank account** the payment
-  left from (category `FIN`, e.g. `1010`). It's required — an administration
-  usually has several FIN accounts (Kas + bank).
-- The single row books against the **creditor** account (category `CRED`). It is
-  auto-resolved when `creditorLedgerId` is omitted.
+- Top-level `ledgerId` (here `bankLedgerId`) is the **bank account** (category
+  `FIN`, e.g. `1010`). It's required — an administration usually has several FIN
+  accounts (Kas + bank).
+- The single row books against the counter account: **creditor** (`CRED`) for
+  `sent`, **debtor** (`DEB`) for `received`. Auto-resolved when `contraLedgerId`
+  is omitted.
 - The linking `invoiceNumber` and `relationId` are placed **on the row** (not
   only at the mutation level) — the API returns `MUT_120` / `MUT_112` otherwise.
 - `amount` is the full paid total; `inExVat` is `EX`; VAT code `GEEN`.
@@ -307,11 +311,19 @@ ships no defaults. Supply them per call, or configure environment defaults:
 EBOEKHOUDEN_INVOICE_TEMPLATE_ID=752296   # your invoice template id
 EBOEKHOUDEN_REVENUE_LEDGER_ID=22206462   # e.g. 8000 Omzet
 EBOEKHOUDEN_DEFAULT_UNIT_ID=3214082      # optional, e.g. "stuk"
+EBOEKHOUDEN_DEBTOR_LEDGER_ID=22206453    # optional, e.g. 1300 Debiteuren
 ```
 
 A call that omits a required id without a configured default fails with a clear
 error telling you which id to supply. Find the ids via `get_invoice(s)` (template),
-`get_ledgers` (revenue) and `get_units`.
+`get_ledgers` (revenue/debtor) and `get_units`.
+
+By default the invoice is **processed into the accounting** (the "Factuur direct
+verwerken in de boekhouding" option): a `mutation` object with the debtor ledger
+is sent so the invoice is journaled and becomes an open post. Without it the
+invoice stays a concept (not journaled, no open post). The debtor ledger is
+auto-resolved from the single `DEB` ledger, or set via `debtorLedgerId` /
+`EBOEKHOUDEN_DEBTOR_LEDGER_ID`. Pass `process: false` for a concept invoice.
 
 ---
 
@@ -360,7 +372,10 @@ acquires/renews the session token and retries once on a 401.
 - **v0.2** — first gated write tool (`create_purchase_mutation`).
 - **v0.3** — write suite: `create_payment`, `create_money_spent`,
   `create_sales_invoice`, `create_relation`, plus shared write helpers.
-- **v0.4** (planned) — more write tools (ledgers, products, cost centers) and
+- **v1.0** — first stable release: received payments on sales invoices
+  (`create_payment` `direction: "received"`) and sales-invoice processing into
+  the accounting; the read + write tool set is considered stable.
+- **v1.1** (planned) — more write tools (ledgers, products, cost centers) and
   richer sales-invoice options (email/PDF, direct debit).
 
 ---
