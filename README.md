@@ -147,6 +147,7 @@ If `whoami` returns your administration(s), you're ready.
 | `get_ledger` | Single GL account by id. |
 | `get_ledger_balances` | Balances across accounts for a period. |
 | `get_ledger_balance` | Balance of a single account. |
+| `create_ledger` | **Write.** Create a GL account (code + description; category defaults to `VW`). Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`. There is no update/delete endpoint — correct mistakes in the web UI. See [Writing data](#writing-data). |
 
 ### Relations (relaties)
 | Tool | Description |
@@ -375,8 +376,9 @@ acquires/renews the session token and retries once on a 401.
 - **v1.0** — first stable release: received payments on sales invoices
   (`create_payment` `direction: "received"`) and sales-invoice processing into
   the accounting; the read + write tool set is considered stable.
-- **v1.1** (planned) — more write tools (ledgers, products, cost centers) and
-  richer sales-invoice options (email/PDF, direct debit).
+- **v1.1** (planned) — `create_ledger` shipped; remaining write tools (products,
+  cost centers) and richer sales-invoice options (email/PDF, direct debit) are
+  still planned.
 
 ---
 

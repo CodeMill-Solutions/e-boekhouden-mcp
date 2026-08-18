@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`create_ledger`** — create a general-ledger account (grootboekrekening) via
+  POST /v1/ledger. Requires `code` + `description`; `category` defaults to
+  `VW`. Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`.
+  There is no update/delete endpoint for ledgers — correct mistakes in the web UI.
+
 ## [1.0.0] - 2026-06-16
 
 First stable release. The read tools plus the gated write suite
