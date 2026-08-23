@@ -9,9 +9,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - **`create_ledger`** — create a general-ledger account (grootboekrekening) via
-  POST /v1/ledger. Requires `code` + `description`; `category` defaults to
-  `VW`. Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`.
-  There is no update/delete endpoint for ledgers — correct mistakes in the web UI.
+  POST /v1/ledger. Requires `code` + `description`. `category` is limited to the
+  five values the API accepts on create (`BAL`, `VW`, `FIN`, `DEB`, `CRED`) and
+  defaults to `VW`, with `categorySource` in the response so the default is never
+  silent; `group` must be an existing ledger group (`LEDG_012`). Creating a second
+  `DEB`/`CRED` ledger warns that it breaks the counter-account auto-resolution in
+  `create_payment` / `create_sales_invoice`. Gated behind
+  `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`. The API returns only
+  the new id — read the record back with `get_ledger`. Ledgers can be corrected
+  through `PATCH /v1/ledger/{id}` (not wrapped as a tool yet — use the web UI);
+  there is no `DELETE` endpoint, so a ledger cannot be removed via the API.
+
+### Changed
+
+- **Write responses report the target administration.** Every gated write tool
+  echoes `administration` in its blocked, dry-run and confirmed responses, so a
+  preview shows *where* the write would land instead of only what it would send.
 
 ## [1.0.0] - 2026-06-16
 

@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { EboekhoudenClient } from '../eboekhouden-client.js';
 import { guard } from './result.js';
-import { writesEnabled, compact, gatedWrite, resolveTermOfPayment, resolveSingleLedger } from './write-helpers.js';
+import { writesEnabled, compact, gatedWrite, resolveTermOfPayment, resolveSingleLedger, targetAdministration } from './write-helpers.js';
 
 /**
  * Register mutation **write** tools. These mutate data in e-Boekhouden, so they
@@ -92,6 +92,7 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
           confirm,
           plannedKey: 'plannedMutation',
           resultKey: 'mutation',
+          administration: targetAdministration(client, administration),
           body,
           extra: { termOfPaymentSource: source },
           execute: () => client.request({ administration, method: 'POST', path: '/mutation', body }),
@@ -163,6 +164,7 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
           confirm,
           plannedKey: received ? 'plannedReceipt' : 'plannedPayment',
           resultKey: 'mutation',
+          administration: targetAdministration(client, administration),
           body,
           execute: () => client.request({ administration, method: 'POST', path: '/mutation', body }),
         });
@@ -221,6 +223,7 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
           confirm,
           plannedKey: 'plannedMutation',
           resultKey: 'mutation',
+          administration: targetAdministration(client, administration),
           body,
           execute: () => client.request({ administration, method: 'POST', path: '/mutation', body }),
         });
