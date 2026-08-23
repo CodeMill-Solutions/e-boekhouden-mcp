@@ -3,7 +3,8 @@ import { ok, type ToolTextResult } from './result.js';
 
 /**
  * Shared helpers for the gated write tools (create_purchase_mutation,
- * create_payment, create_money_spent, create_sales_invoice, create_relation).
+ * create_payment, create_money_spent, create_sales_invoice, create_relation,
+ * create_ledger).
  * Keeping the safety posture (env gate + dry-run) in one place means every write
  * tool behaves identically and a change is made once.
  */
@@ -27,6 +28,17 @@ export function compact<T extends Record<string, unknown>>(obj: T): Partial<T> {
   return out;
 }
 
+/**
+ * The administration a write targets: the explicit label when given, otherwise
+ * the environment default. Reported in every write response so a dry-run shows
+ * *where* it would land, not just what it would send. Never throws — an
+ * unresolvable administration is surfaced as text and fails later on the call
+ * itself, so a preview stays a preview.
+ */
+export function targetAdministration(client: EboekhoudenClient, administration?: string): string {
+  return administration || client.defaultAdministrationName || '(none configured)';
+}
+
 /** Standard refusal message when writes are disabled. */
 export const WRITES_DISABLED_REASON =
   'Writes are disabled. Set EBOEKHOUDEN_ALLOW_WRITES=true in the server environment to enable booking.';
@@ -46,6 +58,8 @@ export interface GatedWriteOptions {
   execute: () => Promise<unknown>;
   /** Extra fields merged into every response (e.g. termOfPaymentSource). */
   extra?: Record<string, unknown>;
+  /** Administration the write targets; echoed in every response (see targetAdministration). */
+  administration?: string;
 }
 
 /**
@@ -59,9 +73,17 @@ export interface GatedWriteOptions {
 export async function gatedWrite(opts: GatedWriteOptions): Promise<ToolTextResult> {
   const statusKey = opts.statusKey ?? 'written';
   const extra = opts.extra ?? {};
+  const target = opts.administration === undefined ? {} : { administration: opts.administration };
 
   if (!writesEnabled()) {
-    return ok({ [statusKey]: false, blocked: true, reason: WRITES_DISABLED_REASON, ...extra, [opts.plannedKey]: opts.body });
+    return ok({
+      [statusKey]: false,
+      blocked: true,
+      reason: WRITES_DISABLED_REASON,
+      ...target,
+      ...extra,
+      [opts.plannedKey]: opts.body,
+    });
   }
   if (!opts.confirm) {
     const verb = statusKey === 'created' ? 'created' : 'booked';
@@ -69,13 +91,14 @@ export async function gatedWrite(opts: GatedWriteOptions): Promise<ToolTextResul
       [statusKey]: false,
       dryRun: true,
       message: `Dry-run: nothing was ${verb}. Re-run with confirm: true to proceed.`,
+      ...target,
       ...extra,
       [opts.plannedKey]: opts.body,
     });
   }
 
   const result = await opts.execute();
-  return ok({ [statusKey]: true, ...extra, [opts.resultKey]: result });
+  return ok({ [statusKey]: true, ...target, ...extra, [opts.resultKey]: result });
 }
 
 export type TermOfPaymentSource = 'explicit' | 'relation' | 'default' | 'eboekhouden-default';

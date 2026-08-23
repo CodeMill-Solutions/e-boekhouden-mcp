@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { EboekhoudenClient } from '../eboekhouden-client.js';
 import { guard } from './result.js';
-import { compact, gatedWrite } from './write-helpers.js';
+import { compact, gatedWrite, targetAdministration } from './write-helpers.js';
 
 /**
  * Register relation (relaties) write tools.
@@ -67,6 +67,7 @@ export function registerRelationWriteTools(server: McpServer, client: Eboekhoude
           statusKey: 'created',
           plannedKey: 'plannedRelation',
           resultKey: 'relation',
+          administration: targetAdministration(client, administration),
           body,
           execute: () => client.request({ administration, method: 'POST', path: '/relation', body }),
         });

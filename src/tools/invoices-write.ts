@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { EboekhoudenClient } from '../eboekhouden-client.js';
 import { guard } from './result.js';
-import { compact, gatedWrite, resolveTermOfPayment, resolveSingleLedger, writesEnabled } from './write-helpers.js';
+import { compact, gatedWrite, resolveTermOfPayment, resolveSingleLedger, writesEnabled, targetAdministration } from './write-helpers.js';
 
 /**
  * Register sales-invoice (verkoopfactuur) write tools.
@@ -149,6 +149,7 @@ export function registerInvoiceWriteTools(server: McpServer, client: Eboekhouden
           statusKey: 'created',
           plannedKey: 'plannedInvoice',
           resultKey: 'invoice',
+          administration: targetAdministration(client, administration),
           body,
           extra: { termOfPaymentSource: source },
           execute: () => client.request({ administration, method: 'POST', path: '/invoice', body }),

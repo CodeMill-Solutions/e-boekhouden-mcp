@@ -5,13 +5,13 @@
 A [Model Context Protocol](https://modelcontextprotocol.io) server for the
 [e-Boekhouden](https://www.e-boekhouden.nl) **REST API**. It lets MCP clients read your bookkeeping data — administrations, ledgers,
 relations, mutations, invoices and master data — through a small set of typed
-tools, and create purchase invoices behind explicit safety guards.
+tools, and book purchase invoices, payments, expenses, sales invoices, relations
+and ledger accounts behind explicit safety guards.
 
 > Built on the modern REST API (`api.e-boekhouden.nl`, OpenAPI v1), **not** the
-> legacy SOAP API. All tools are **read-only by default**; the single write tool
-> (`create_purchase_mutation`) stays disabled unless you opt in with
-> `EBOEKHOUDEN_ALLOW_WRITES=true`, and even then runs as a dry-run until you pass
-> `confirm: true`. More write tools (sales invoices, relations) are planned.
+> legacy SOAP API. All tools are **read-only by default**; every write tool stays
+> disabled unless you opt in with `EBOEKHOUDEN_ALLOW_WRITES=true`, and even then
+> runs as a dry-run until you pass `confirm: true`.
 
 ---
 
@@ -122,7 +122,7 @@ If `whoami` returns your administration(s), you're ready.
 
 ---
 
-## Available tools (24)
+## Available tools (25)
 
 ### Auth & setup
 | Tool | Description |
@@ -147,6 +147,7 @@ If `whoami` returns your administration(s), you're ready.
 | `get_ledger` | Single GL account by id. |
 | `get_ledger_balances` | Balances across accounts for a period. |
 | `get_ledger_balance` | Balance of a single account. |
+| `create_ledger` | **Write.** Create a GL account (code + description; `category` is one of `BAL`/`VW`/`FIN`/`DEB`/`CRED`, default `VW`). Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`. See [Creating ledger accounts](#creating-ledger-accounts). |
 
 ### Relations (relaties)
 | Tool | Description |
@@ -190,9 +191,9 @@ The server is read-only out of the box. The write tools —
 `create_purchase_mutation` (purchase invoice / inkoopfactuur, `type: 1`),
 `create_payment` (payment against a purchase invoice, `type: 4`),
 `create_money_spent` (expense paid directly, *Geld uitgegeven*, `type: 6`),
-`create_sales_invoice` (verkoopfactuur via the invoicing module) and
-`create_relation` (supplier/customer) — are each protected by two independent
-guards:
+`create_sales_invoice` (verkoopfactuur via the invoicing module),
+`create_relation` (supplier/customer) and `create_ledger` (grootboekrekening) —
+are each protected by two independent guards:
 
 1. **Environment gate** — writes are refused unless `EBOEKHOUDEN_ALLOW_WRITES`
    is set to a truthy value (`true`/`1`/`yes`/`on`). When unset, the tool is
@@ -201,6 +202,10 @@ guards:
 2. **Dry-run by default** — even with writes enabled, a call only books when
    `confirm: true` is passed. Otherwise it returns `dryRun: true` and the
    planned body for review.
+
+Every write response — blocked, dry-run and confirmed alike — also reports the
+`administration` the call targets (the explicit label, or the configured
+default), so a preview shows *where* the write would land.
 
 Enable writes in your client config:
 
@@ -325,6 +330,44 @@ invoice stays a concept (not journaled, no open post). The debtor ledger is
 auto-resolved from the single `DEB` ledger, or set via `debtorLedgerId` /
 `EBOEKHOUDEN_DEBTOR_LEDGER_ID`. Pass `process: false` for a concept invoice.
 
+### Creating ledger accounts
+
+`create_ledger` posts to `POST /v1/ledger` — useful when a cost account you need
+does not exist yet (a new expense category, a new balance account).
+
+- `code` (max 10) must be free: an existing ledger code yields `LEDG_013`, and a
+  code already used as a *group* code yields `LEDG_017`. `description` max 100.
+- `category` accepts only **`BAL`** (balance sheet), **`VW`** (profit & loss),
+  **`FIN`** (bank/cash), **`DEB`** (debtors) and **`CRED`** (creditors). The VAT
+  categories `get_ledgers` also returns (`AF6`, `AF19`, `AFOVERIG`, `VOOR`,
+  `BTWRC`, `AF`) are read-only and rejected on create (`LEDG_018`). Omitted it
+  defaults to `VW`; the response reports `categorySource` so the default is
+  never silent.
+- `group` (max 50) must be an **existing** ledger group — an unknown group fails
+  with `LEDG_012`.
+- Adding a second `DEB` or `CRED` ledger breaks the single-ledger auto-resolution
+  used by `create_payment` and `create_sales_invoice`; the tool warns about this
+  up front, and those calls then need an explicit `contraLedgerId` /
+  `debtorLedgerId`.
+- On success the API returns only the new **id** (`{ "id": 53487554 }`) — read
+  the full record back with `get_ledger`.
+
+```jsonc
+// create_ledger
+{
+  "code": "4200",
+  "description": "Huisvestingskosten",
+  "category": "VW"
+  // no "confirm" → returns the planned ledger without creating it
+}
+```
+
+Corrections go through `PATCH /v1/ledger/{id}`, which this server does not wrap
+yet — edit the ledger in the e-Boekhouden web UI. Note that the category of a
+ledger with booked mutations can no longer be changed freely (`LEDG_014` /
+`LEDG_015`). There is **no** `DELETE` endpoint: a ledger cannot be removed via
+the API.
+
 ---
 
 ## Testing
@@ -348,6 +391,7 @@ src/
     auth.ts                # whoami, reload_credentials
     administrations.ts     # list_administrations, get_linked_administrations
     ledgers.ts             # get_ledger(s), balances
+    ledgers-write.ts       # create_ledger (gated write tool)
     relations.ts           # get_relation(s)
     relations-write.ts     # create_relation (gated write tool)
     write-helpers.ts       # shared write gate + body helpers
@@ -375,7 +419,9 @@ acquires/renews the session token and retries once on a 401.
 - **v1.0** — first stable release: received payments on sales invoices
   (`create_payment` `direction: "received"`) and sales-invoice processing into
   the accounting; the read + write tool set is considered stable.
-- **v1.1** (planned) — more write tools (ledgers, products, cost centers) and
+- **v1.1** (planned) — `create_ledger` (merged, still unreleased — see the
+  CHANGELOG's *Unreleased* section), plus the remaining write tools (products,
+  cost centers), an `update_ledger` wrapper around `PATCH /v1/ledger/{id}`, and
   richer sales-invoice options (email/PDF, direct debit).
 
 ---
