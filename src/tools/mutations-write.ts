@@ -2,7 +2,14 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { EboekhoudenClient } from '../eboekhouden-client.js';
 import { guard } from './result.js';
-import { writesEnabled, compact, gatedWrite, resolveTermOfPayment, resolveSingleLedger, targetAdministration } from './write-helpers.js';
+import {
+  writesEnabled,
+  compact,
+  gatedWrite,
+  resolveTermOfPayment,
+  resolveSingleLedger,
+  targetAdministration,
+} from './write-helpers.js';
 
 /**
  * Register mutation **write** tools. These mutate data in e-Boekhouden, so they
@@ -16,7 +23,119 @@ import { writesEnabled, compact, gatedWrite, resolveTermOfPayment, resolveSingle
 const PURCHASE_MUTATION_TYPE = 1; // Factuur ontvangen / invoice received
 const PAYMENT_RECEIVED_TYPE = 3; // Factuurbetaling ontvangen / invoice payment received
 const PAYMENT_SENT_TYPE = 4; // Factuurbetaling verstuurd / invoice payment sent
+const MONEY_RECEIVED_TYPE = 5; // Geld ontvangen / money received
 const MONEY_SENT_TYPE = 6; // Geld uitgegeven / money spent
+
+/**
+ * Every VAT code POST /v1/mutation accepts (the `rows[].vatCode` enum in the
+ * spec). Which subset a given mutation type takes is enforced server-side:
+ * purchase-type codes (*_INK) on types 1/6 (MUT_110), sale-type codes (*_VERK)
+ * on types 2/5 (MUT_111); GEEN and AFW are neutral.
+ */
+const VAT_CODES = [
+  'HOOG_VERK_21',
+  'LAAG_VERK_9',
+  'VERL_VERK',
+  'VERL_VERK_L9',
+  'AFW',
+  'BU_EU_VERK',
+  'BI_EU_VERK',
+  'BI_EU_VERK_D',
+  'AFST_VERK',
+  'LAAG_INK_9',
+  'HOOG_INK_21',
+  'VERL_INK',
+  'AFW_VERK',
+  'BU_EU_INK',
+  'BI_EU_INK',
+  'GEEN',
+] as const;
+
+/**
+ * Row shape shared by every mutation body (mirrors `rows[]` in the spec). Only
+ * the two hints differ per tool: what the row ledger represents and which VAT
+ * codes fit the mutation type.
+ */
+function mutationRowSchema(ledgerHint: string, vatHint: string) {
+  return z.object({
+    ledgerId: z.number().int().describe(ledgerHint),
+    vatCode: z.enum(VAT_CODES).describe(vatHint),
+    amount: z.number().describe('Line amount, inclusive or exclusive of VAT per `inExVat`.'),
+    description: z.string().optional().describe('Optional line description.'),
+    vatAmount: z.number().optional().describe('Explicit VAT amount; only used with divergent code AFW / AFW_VERK.'),
+    costCenterId: z.number().int().optional().describe('Optional cost center id.'),
+  });
+}
+
+/** The API rejects these row-ledger categories on types 1, 2, 5 and 6 (MUT_106). */
+const ROW_LEDGER_RESTRICTION = 'Must NOT be a FIN, CRED or DEB ledger (API error MUT_106).';
+
+interface MoneyMutationSpec {
+  name: 'create_money_spent' | 'create_money_received';
+  type: typeof MONEY_SENT_TYPE | typeof MONEY_RECEIVED_TYPE;
+  description: string;
+  /** Hint for `bankLedgerId`. */
+  bankHint: string;
+  /** Hint for each row's ledger. */
+  ledgerHint: string;
+  /** Hint for each row's VAT code. */
+  vatHint: string;
+  /** Hint for the `rows` array. */
+  rowsHint: string;
+}
+
+/**
+ * Money spent (type 6) and money received (type 5) are the same booking with the
+ * bank account on the other side: top-level `ledgerId` is the FIN account, rows
+ * are the counter-account lines. One registration keeps the two in lock-step.
+ */
+function registerMoneyMutationTool(server: McpServer, client: EboekhoudenClient, spec: MoneyMutationSpec): void {
+  server.registerTool(
+    spec.name,
+    {
+      description: spec.description,
+      inputSchema: {
+        date: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be ISO format YYYY-MM-DD.')
+          .describe('Transaction date (bank date) in ISO format YYYY-MM-DD.'),
+        bankLedgerId: z.number().int().describe(spec.bankHint),
+        inExVat: z
+          .enum(['IN', 'EX'])
+          .optional()
+          .describe('Whether row amounts include VAT ("IN", default) or exclude it ("EX").'),
+        rows: z.array(mutationRowSchema(spec.ledgerHint, spec.vatHint)).min(1).describe(spec.rowsHint),
+        description: z.string().optional().describe('Optional mutation description.'),
+        relationId: z.number().int().optional().describe('Optional relation id (usually omitted).'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Set true to actually book. When false/omitted, returns a dry-run preview only.'),
+        administration: z.string().optional().describe('Credentials label. Defaults to EBOEKHOUDEN_ADMINISTRATION.'),
+      },
+    },
+    async ({ date, bankLedgerId, inExVat, rows, description, relationId, confirm, administration }) =>
+      guard(async () => {
+        const body = compact({
+          type: spec.type,
+          date,
+          ledgerId: bankLedgerId,
+          description,
+          inExVat: inExVat ?? 'IN',
+          relationId,
+          rows: rows.map((r) => compact(r)),
+        });
+        return gatedWrite({
+          confirm,
+          plannedKey: 'plannedMutation',
+          resultKey: 'mutation',
+          administration: targetAdministration(client, administration),
+          body,
+          execute: () => client.request({ administration, method: 'POST', path: '/mutation', body }),
+        });
+      }),
+  );
+}
 
 export function registerMutationWriteTools(server: McpServer, client: EboekhoudenClient): void {
   server.registerTool(
@@ -28,7 +147,7 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
         'WRITE TOOL — disabled unless the server has EBOEKHOUDEN_ALLOW_WRITES=true. ' +
         'Dry-run by default: it only books when `confirm: true` is passed; otherwise it ' +
         'returns the exact mutation body it would send so you can review it first. ' +
-        "If `termOfPayment` is omitted, it is taken from the relation (falling back to " +
+        'If `termOfPayment` is omitted, it is taken from the relation (falling back to ' +
         "`termOfPaymentDefault`, then e-Boekhouden's own default); see `termOfPaymentSource`. " +
         'The top-level `ledgerId` is the creditor counter-account (category CRED, e.g. ' +
         '"Crediteuren"). Each `rows` entry is a cost line with a purchase VAT code ' +
@@ -41,23 +160,16 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
           .string()
           .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be ISO format YYYY-MM-DD.')
           .describe('Invoice date in ISO format YYYY-MM-DD.'),
-        ledgerId: z
-          .number()
-          .int()
-          .describe('Creditor counter-account ledger id (category CRED, e.g. Crediteuren).'),
+        ledgerId: z.number().int().describe('Creditor counter-account ledger id (category CRED, e.g. Crediteuren).'),
         inExVat: z
           .enum(['IN', 'EX'])
           .describe('Whether row `amount` values are inclusive ("IN") or exclusive ("EX") of VAT.'),
         rows: z
           .array(
-            z.object({
-              ledgerId: z.number().int().describe('Cost/expense ledger id for this line (category VW).'),
-              vatCode: z.string().min(1).describe('Purchase VAT code, e.g. HOOG_INK_21, LAAG_INK_9, VERL_INK, GEEN.'),
-              amount: z.number().describe('Line amount, inclusive or exclusive of VAT per `inExVat`.'),
-              description: z.string().optional().describe('Optional line description.'),
-              vatAmount: z.number().optional().describe('Explicit VAT amount; only used with divergent code AFW.'),
-              costCenterId: z.number().int().optional().describe('Optional cost center id.'),
-            }),
+            mutationRowSchema(
+              `Cost/expense ledger id for this line (category VW). ${ROW_LEDGER_RESTRICTION}`,
+              'Purchase VAT code (HOOG_INK_21, LAAG_INK_9, VERL_INK, BU_EU_INK, BI_EU_INK, GEEN, …); a sale code yields MUT_110.',
+            ),
           )
           .min(1)
           .describe('One or more cost lines making up the invoice.'),
@@ -69,13 +181,35 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
           .optional()
           .describe('Fallback term (days) when `termOfPayment` is omitted AND the relation has none set.'),
         paymentReference: z.string().optional().describe('Optional payment reference (betalingskenmerk).'),
-        confirm: z.boolean().optional().describe('Set true to actually book. When false/omitted, returns a dry-run preview only.'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Set true to actually book. When false/omitted, returns a dry-run preview only.'),
         administration: z.string().optional().describe('Credentials label. Defaults to EBOEKHOUDEN_ADMINISTRATION.'),
       },
     },
-    async ({ relationId, invoiceNumber, date, ledgerId, inExVat, rows, description, termOfPayment, termOfPaymentDefault, paymentReference, confirm, administration }) =>
+    async ({
+      relationId,
+      invoiceNumber,
+      date,
+      ledgerId,
+      inExVat,
+      rows,
+      description,
+      termOfPayment,
+      termOfPaymentDefault,
+      paymentReference,
+      confirm,
+      administration,
+    }) =>
       guard(async () => {
-        const { term, source } = await resolveTermOfPayment(client, administration, relationId, termOfPayment, termOfPaymentDefault);
+        const { term, source } = await resolveTermOfPayment(
+          client,
+          administration,
+          relationId,
+          termOfPayment,
+          termOfPaymentDefault,
+        );
         const body = compact({
           type: PURCHASE_MUTATION_TYPE,
           date,
@@ -125,18 +259,34 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
         direction: z
           .enum(['sent', 'received'])
           .optional()
-          .describe('"sent" = pay a purchase invoice (type 4, default); "received" = received payment on a sales invoice (type 3).'),
+          .describe(
+            '"sent" = pay a purchase invoice (type 4, default); "received" = received payment on a sales invoice (type 3).',
+          ),
         contraLedgerId: z
           .number()
           .int()
           .optional()
           .describe('Counter account: creditor (sent) or debtor (received). Auto-resolved when omitted.'),
         description: z.string().optional().describe('Optional description (default "Betaling").'),
-        confirm: z.boolean().optional().describe('Set true to actually book. When false/omitted, returns a dry-run preview only.'),
+        confirm: z
+          .boolean()
+          .optional()
+          .describe('Set true to actually book. When false/omitted, returns a dry-run preview only.'),
         administration: z.string().optional().describe('Credentials label. Defaults to EBOEKHOUDEN_ADMINISTRATION.'),
       },
     },
-    async ({ relationId, invoiceNumber, amount, date, bankLedgerId, direction, contraLedgerId, description, confirm, administration }) =>
+    async ({
+      relationId,
+      invoiceNumber,
+      amount,
+      date,
+      bankLedgerId,
+      direction,
+      contraLedgerId,
+      description,
+      confirm,
+      administration,
+    }) =>
       guard(async () => {
         const received = direction === 'received';
         const type = received ? PAYMENT_RECEIVED_TYPE : PAYMENT_SENT_TYPE;
@@ -171,62 +321,47 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
       }),
   );
 
-  server.registerTool(
-    'create_money_spent',
-    {
-      description:
-        'Book money spent directly from a bank/cash account (Geld uitgegeven, type 6) via ' +
-        'POST /v1/mutation. For expenses paid directly, without a separate purchase invoice — ' +
-        'e.g. bank charges, insurance premiums collected by direct debit, or receipts. ' +
-        'WRITE TOOL — disabled unless EBOEKHOUDEN_ALLOW_WRITES=true. Dry-run by default unless ' +
-        '`confirm: true`. Top-level `ledgerId` (here `bankLedgerId`) is the bank/cash account the ' +
-        'money left from (category FIN); each row is an expense line with its ledger + VAT code. ' +
-        'No invoice number or relation is required.',
-      inputSchema: {
-        date: z
-          .string()
-          .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be ISO format YYYY-MM-DD.')
-          .describe('Transaction date (bank date) in ISO format YYYY-MM-DD.'),
-        bankLedgerId: z.number().int().describe('Bank/cash ledger id the money left from (category FIN).'),
-        inExVat: z.enum(['IN', 'EX']).optional().describe('Whether row amounts include VAT ("IN", default) or exclude it ("EX").'),
-        rows: z
-          .array(
-            z.object({
-              ledgerId: z.number().int().describe('Expense ledger id for this line (category VW).'),
-              vatCode: z.string().min(1).describe('VAT code, e.g. HOOG_INK_21, LAAG_INK_9, GEEN.'),
-              amount: z.number().describe('Line amount, incl/excl VAT per `inExVat`.'),
-              description: z.string().optional().describe('Optional line description.'),
-              vatAmount: z.number().optional().describe('Explicit VAT amount; only with divergent code AFW.'),
-              costCenterId: z.number().int().optional().describe('Optional cost center id.'),
-            }),
-          )
-          .min(1)
-          .describe('One or more expense lines.'),
-        description: z.string().optional().describe('Optional mutation description.'),
-        relationId: z.number().int().optional().describe('Optional relation id (usually omitted).'),
-        confirm: z.boolean().optional().describe('Set true to actually book. When false/omitted, returns a dry-run preview only.'),
-        administration: z.string().optional().describe('Credentials label. Defaults to EBOEKHOUDEN_ADMINISTRATION.'),
-      },
-    },
-    async ({ date, bankLedgerId, inExVat, rows, description, relationId, confirm, administration }) =>
-      guard(async () => {
-        const body = compact({
-          type: MONEY_SENT_TYPE,
-          date,
-          ledgerId: bankLedgerId,
-          description,
-          inExVat: inExVat ?? 'IN',
-          relationId,
-          rows: rows.map((r) => compact(r)),
-        });
-        return gatedWrite({
-          confirm,
-          plannedKey: 'plannedMutation',
-          resultKey: 'mutation',
-          administration: targetAdministration(client, administration),
-          body,
-          execute: () => client.request({ administration, method: 'POST', path: '/mutation', body }),
-        });
-      }),
-  );
+  registerMoneyMutationTool(server, client, {
+    name: 'create_money_spent',
+    type: MONEY_SENT_TYPE,
+    description:
+      'Book money spent directly from a bank/cash account (Geld uitgegeven, type 6) via ' +
+      'POST /v1/mutation. For expenses paid directly, without a separate purchase invoice — ' +
+      'e.g. bank charges, insurance premiums collected by direct debit, or receipts. ' +
+      'WRITE TOOL — disabled unless EBOEKHOUDEN_ALLOW_WRITES=true. Dry-run by default unless ' +
+      '`confirm: true`. Top-level `ledgerId` (here `bankLedgerId`) is the bank/cash account the ' +
+      'money left from (category FIN); each row is an expense line with its ledger + purchase VAT ' +
+      'code. Row ledgers may not be FIN/CRED/DEB (MUT_106) — for a transfer between your own ' +
+      'accounts book the sending leg here against a suspense account (kruisposten), see ' +
+      '`create_money_received`. No invoice number or relation is required.',
+    bankHint: 'Bank/cash ledger id the money left from (category FIN).',
+    ledgerHint: `Expense ledger id for this line (category VW, or a BAL suspense account). ${ROW_LEDGER_RESTRICTION}`,
+    vatHint: 'Purchase VAT code (HOOG_INK_21, LAAG_INK_9, VERL_INK, GEEN, …); a sale code yields MUT_110.',
+    rowsHint: 'One or more expense lines.',
+  });
+
+  registerMoneyMutationTool(server, client, {
+    name: 'create_money_received',
+    type: MONEY_RECEIVED_TYPE,
+    description:
+      'Book money received directly into a bank/cash account (Geld ontvangen, type 5) via ' +
+      'POST /v1/mutation. The mirror of `create_money_spent`: for money coming in without a ' +
+      'sales invoice — e.g. interest received, a refund, or the receiving leg of an internal ' +
+      'transfer between your own accounts. ' +
+      'WRITE TOOL — disabled unless EBOEKHOUDEN_ALLOW_WRITES=true. Dry-run by default unless ' +
+      '`confirm: true`. Top-level `ledgerId` (here `bankLedgerId`) is the bank/cash account the ' +
+      'money arrived in (category FIN); each row is a counter-account line with its ledger + sale ' +
+      'VAT code (HOOG_VERK_21, …, or GEEN — a purchase code yields MUT_111). Row ledgers may not ' +
+      'be FIN/CRED/DEB (MUT_106): the other bank account is NOT a valid counter-account. ' +
+      'No invoice number or relation is required. ' +
+      'NOTE for internal transfers between your own accounts: book BOTH legs over a suspense ' +
+      'account (kruisposten, category BAL) so it nets to zero — `create_money_spent` from the ' +
+      'source account with a row on kruisposten, plus `create_money_received` into the destination ' +
+      'account with a row on that same kruisposten ledger. Booking only one leg leaves the ' +
+      'suspense account out of balance.',
+    bankHint: 'Bank/cash ledger id the money arrived in (category FIN).',
+    ledgerHint: `Counter-account ledger id for this line (e.g. revenue VW, or a BAL suspense account). ${ROW_LEDGER_RESTRICTION}`,
+    vatHint: 'Sale VAT code (HOOG_VERK_21, LAAG_VERK_9, VERL_VERK, GEEN, …); a purchase code yields MUT_111.',
+    rowsHint: 'One or more counter-account lines.',
+  });
 }

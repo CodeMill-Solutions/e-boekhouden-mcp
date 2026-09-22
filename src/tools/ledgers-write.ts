@@ -60,12 +60,17 @@ async function counterAccountWarning(
     }
   }
 
-  return (
-    `Adding a ${category} ledger affects the automatic ${label} counter-account lookup: ` +
-    `create_payment and create_sales_invoice resolve it only when exactly one ${category} ledger exists. ` +
-    `With a second one those calls fail (dry-runs included) until the id is passed explicitly ` +
-    `(\`contraLedgerId\` on create_payment, \`debtorLedgerId\` on create_sales_invoice).${existing}`
-  );
+  // Only create_payment resolves CRED (direction "sent"); DEB is resolved by
+  // create_payment (direction "received") and by create_sales_invoice.
+  const affected =
+    category === 'CRED'
+      ? 'create_payment (direction "sent") resolves it only when exactly one CRED ledger exists. With a ' +
+        'second one that call fails (dry-runs included) until `contraLedgerId` is passed explicitly.'
+      : 'create_payment (direction "received") and create_sales_invoice resolve it only when exactly one ' +
+        'DEB ledger exists. With a second one those calls fail (dry-runs included) until the id is passed ' +
+        'explicitly (`contraLedgerId` on create_payment; `debtorLedgerId` or EBOEKHOUDEN_DEBTOR_LEDGER_ID ' +
+        'on create_sales_invoice).';
+  return `Adding a ${category} ledger affects the automatic ${label} counter-account lookup: ${affected}${existing}`;
 }
 
 export function registerLedgerWriteTools(server: McpServer, client: EboekhoudenClient): void {
@@ -112,10 +117,7 @@ export function registerLedgerWriteTools(server: McpServer, client: EboekhoudenC
           .boolean()
           .optional()
           .describe('Set true to actually create. When false/omitted, returns a dry-run preview only.'),
-        administration: z
-          .string()
-          .optional()
-          .describe('Credentials label. Defaults to EBOEKHOUDEN_ADMINISTRATION.'),
+        administration: z.string().optional().describe('Credentials label. Defaults to EBOEKHOUDEN_ADMINISTRATION.'),
       },
     },
     async ({ code, description, category, group, confirm, administration }) =>

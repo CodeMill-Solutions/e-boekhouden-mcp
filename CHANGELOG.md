@@ -4,6 +4,29 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`create_money_received`** — book money received into a bank/cash account
+  (Geld ontvangen, type 5) via POST /v1/mutation. The mirror of
+  `create_money_spent`: for income without a sales invoice, or the receiving leg
+  of an internal transfer between your own accounts (book both legs over a
+  suspense/kruisposten account so it nets to zero). Gated behind
+  `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`.
+
+### Changed
+
+- **Mutation rows validate `vatCode` against the API's enum** — the sixteen codes
+  POST /v1/mutation accepts — instead of any string, so a typo fails at input
+  time rather than with a 400 after `confirm: true`. Row descriptions now also
+  state that a row ledger may not be FIN/CRED/DEB (MUT_106) and which VAT-code
+  family the mutation type expects (MUT_110/MUT_111).
+- **`create_ledger`'s DEB/CRED warning is category-specific** — a new CRED ledger
+  only affects `create_payment` (direction `"sent"`); the earlier wording also
+  named `create_sales_invoice`, which never resolves a CRED ledger.
+- `.env.example` documents `EBOEKHOUDEN_DEBTOR_LEDGER_ID`.
+
 ## [1.1.0] 2026-08-24
 
 ### Added
