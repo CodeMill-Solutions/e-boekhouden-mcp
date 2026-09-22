@@ -28,11 +28,20 @@ const MONEY_SENT_TYPE = 6; // Geld uitgegeven / money spent
 
 /**
  * Every VAT code POST /v1/mutation accepts (the `rows[].vatCode` enum in the
- * spec). Which subset a given mutation type takes is enforced server-side:
- * purchase-type codes (*_INK) on types 1/6 (MUT_110), sale-type codes (*_VERK)
- * on types 2/5 (MUT_111); GEEN is neutral. AFW and AFW_VERK both take an
- * explicit `vatAmount`; the spec labels only AFW_VERK as a sale code, so AFW is
- * presumably the purchase-side variant (unverified).
+ * spec).
+ *
+ * VERIFIED against the spec's error table: MUT_110 is "VAT code must be of type
+ * purchase" and MUT_111 is "VAT code must be of type sale", and the NL VAT-code
+ * table labels every code as Type = Purchase or Sale (GEEN has no type).
+ *
+ * NOT VERIFIED: which mutation type demands which family. The spec never ties
+ * MUT_110/MUT_111 to a type, and we have not round-tripped a rejection against
+ * the live API. The convention below is inferred from the error wording and from
+ * observed practice (in a live administration all 82 type-5 mutations use a sale
+ * code or GEEN, none a purchase code): purchase codes (*_INK) on types 1/6,
+ * sale codes (*_VERK) on types 2/5. Treat it as a strong default, not as
+ * documented API behaviour — if a call fails on MUT_110/MUT_111, the error text
+ * itself names the family the API wants.
  */
 const VAT_CODES = [
   'HOOG_VERK_21',
@@ -107,7 +116,7 @@ function registerMoneyMutationTool(server: McpServer, client: EboekhoudenClient,
           .optional()
           .describe('Whether row amounts include VAT ("IN", default) or exclude it ("EX").'),
         rows: z.array(mutationRowSchema(spec.ledgerHint, spec.vatHint)).min(1).describe(spec.rowsHint),
-        description: z.string().max(50).optional().describe('Optional mutation description (max 50 chars).'),
+        description: z.string().optional().describe('Optional mutation description.'),
         relationId: z.number().int().optional().describe('Optional relation id (usually omitted).'),
         confirm: z
           .boolean()
@@ -175,7 +184,7 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
           )
           .min(1)
           .describe('One or more cost lines making up the invoice.'),
-        description: z.string().max(50).optional().describe('Optional mutation description (max 50 chars).'),
+        description: z.string().optional().describe('Optional mutation description.'),
         termOfPayment: z.number().int().optional().describe('Payment term in days. Omit to take it from the relation.'),
         termOfPaymentDefault: z
           .number()
@@ -269,7 +278,7 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
           .int()
           .optional()
           .describe('Counter account: creditor (sent) or debtor (received). Auto-resolved when omitted.'),
-        description: z.string().max(50).optional().describe('Optional description (default "Betaling", max 50 chars).'),
+        description: z.string().optional().describe('Optional description (default "Betaling").'),
         confirm: z
           .boolean()
           .optional()
@@ -338,7 +347,10 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
       '"GEEN", see `create_money_received`. No invoice number or relation is required.',
     bankHint: 'Bank/cash ledger id the money left from (category FIN).',
     ledgerHint: `Expense ledger id for this line (category VW, or a BAL suspense account). ${ROW_LEDGER_RESTRICTION}`,
-    vatHint: 'Purchase VAT code (HOOG_INK_21, LAAG_INK_9, VERL_INK, GEEN, …); a sale code yields MUT_110.',
+    vatHint:
+      'Purchase VAT code (HOOG_INK_21, LAAG_INK_9, VERL_INK, GEEN, …). A sale code is expected to ' +
+      'fail with MUT_110 ("VAT code must be of type purchase") — inferred from the error wording, ' +
+      'not documented per mutation type.',
     rowsHint: 'One or more expense lines.',
   });
 
@@ -360,10 +372,19 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
       'account (kruisposten, category BAL) so it nets to zero — `create_money_spent` from the ' +
       'source account with a row on kruisposten, plus `create_money_received` into the destination ' +
       'account with a row on that same kruisposten ledger. Both rows use vatCode "GEEN": a ' +
-      'transfer carries no VAT. Booking only one leg leaves the suspense account out of balance.',
+      'transfer carries no VAT. Booking only one leg leaves the suspense account out of balance. ' +
+      'NOTE for a SUPPLIER REFUND with VAT (money back on an expense you already booked): put the ' +
+      'row on the ORIGINAL EXPENSE ledger, not on a revenue ledger, so the cost reverses; the VAT ' +
+      'code must still be a sale code (see above). Be aware this books the VAT to the output-VAT ' +
+      'account rather than reducing input VAT — the net amount payable on the return is the same, ' +
+      'but it lands in a different box. Whether that presentation is acceptable is a question for ' +
+      'an accountant, not an API constraint.',
     bankHint: 'Bank/cash ledger id the money arrived in (category FIN).',
     ledgerHint: `Counter-account ledger id for this line (e.g. revenue VW, or a BAL suspense account). ${ROW_LEDGER_RESTRICTION}`,
-    vatHint: 'Sale VAT code (HOOG_VERK_21, LAAG_VERK_9, VERL_VERK, GEEN, …); a purchase code yields MUT_111.',
+    vatHint:
+      'Sale VAT code (HOOG_VERK_21, LAAG_VERK_9, VERL_VERK, GEEN, …). A purchase code is expected ' +
+      'to fail with MUT_111 ("VAT code must be of type sale") — inferred from the error wording, ' +
+      'not documented per mutation type.',
     rowsHint: 'One or more counter-account lines.',
   });
 }
