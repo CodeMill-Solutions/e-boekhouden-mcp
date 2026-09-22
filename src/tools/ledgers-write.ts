@@ -60,12 +60,17 @@ async function counterAccountWarning(
     }
   }
 
-  return (
-    `Adding a ${category} ledger affects the automatic ${label} counter-account lookup: ` +
-    `create_payment and create_sales_invoice resolve it only when exactly one ${category} ledger exists. ` +
-    `With a second one those calls fail (dry-runs included) until the id is passed explicitly ` +
-    `(\`contraLedgerId\` on create_payment, \`debtorLedgerId\` on create_sales_invoice).${existing}`
-  );
+  // Only create_payment resolves CRED (direction "sent"); DEB is resolved by
+  // create_payment (direction "received") and by create_sales_invoice.
+  const affected =
+    category === 'CRED'
+      ? 'create_payment (direction "sent") resolves it only when exactly one CRED ledger exists. With a ' +
+        'second one that call fails (dry-runs included) until `contraLedgerId` is passed explicitly.'
+      : 'create_payment (direction "received") and create_sales_invoice resolve it only when exactly one ' +
+        'DEB ledger exists. With a second one those calls fail (dry-runs included) until the id is passed ' +
+        'explicitly (`contraLedgerId` on create_payment; `debtorLedgerId` or EBOEKHOUDEN_DEBTOR_LEDGER_ID ' +
+        'on create_sales_invoice).';
+  return `Adding a ${category} ledger affects the automatic ${label} counter-account lookup: ${affected}${existing}`;
 }
 
 export function registerLedgerWriteTools(server: McpServer, client: EboekhoudenClient): void {
@@ -89,9 +94,9 @@ export function registerLedgerWriteTools(server: McpServer, client: EboekhoudenC
         '`create_payment` / `create_sales_invoice`; the response warns when that applies. ' +
         'On success the API returns only the new id (`{ "id": ... }`) — use `get_ledger` for the full ' +
         'record. That id can be used directly in `create_purchase_mutation` / `create_money_spent` / ' +
-        '`create_sales_invoice`. Corrections afterwards go through PATCH /v1/ledger/{id}, which this ' +
-        'server does not expose yet — so fix mistakes in the e-Boekhouden web UI. There is no DELETE ' +
-        'endpoint at all: a ledger can never be removed via the API.',
+        '`create_money_received` / `create_sales_invoice`. Corrections afterwards go through ' +
+        'PATCH /v1/ledger/{id}, which this server does not expose yet — so fix mistakes in the ' +
+        'e-Boekhouden web UI. There is no DELETE endpoint at all: a ledger can never be removed via the API.',
       inputSchema: {
         code: z.string().min(1).max(10).describe('Ledger code, e.g. "4200" (max 10 chars, must not exist yet).'),
         description: z.string().min(1).max(100).describe('Ledger description, e.g. "Huisvestingskosten".'),
@@ -112,10 +117,7 @@ export function registerLedgerWriteTools(server: McpServer, client: EboekhoudenC
           .boolean()
           .optional()
           .describe('Set true to actually create. When false/omitted, returns a dry-run preview only.'),
-        administration: z
-          .string()
-          .optional()
-          .describe('Credentials label. Defaults to EBOEKHOUDEN_ADMINISTRATION.'),
+        administration: z.string().optional().describe('Credentials label. Defaults to EBOEKHOUDEN_ADMINISTRATION.'),
       },
     },
     async ({ code, description, category, group, confirm, administration }) =>

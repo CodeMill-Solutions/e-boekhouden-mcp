@@ -51,7 +51,7 @@ const client = new EboekhoudenClient(defaultAdministration, credentialsMap);
 
 const server = new McpServer({
   name: 'e-boekhouden-mcp',
-  version: '1.1.0',
+  version: '1.2.0',
 });
 
 registerAuthTools(server, client);
@@ -80,13 +80,13 @@ const credInfo =
 const writesAllowed = writesEnabled();
 
 process.stderr.write(
-  `[e-boekhouden-mcp] Server started — 25 tools registered ` +
+  `[e-boekhouden-mcp] Server started — 26 tools registered ` +
     `(whoami, reload_credentials, list_administrations, get_linked_administrations, ` +
     `get_ledgers, get_ledger, get_ledger_balances, get_ledger_balance, create_ledger, ` +
     `get_relations, get_relation, create_relation, get_mutations, get_mutation, ` +
     `get_outstanding_invoices, get_invoices, get_invoice, create_sales_invoice, get_products, ` +
     `get_product_groups, get_cost_centers, get_units, create_purchase_mutation, create_payment, ` +
-    `create_money_spent). ` +
+    `create_money_spent, create_money_received). ` +
     `Writes: ${writesAllowed ? 'ENABLED (EBOEKHOUDEN_ALLOW_WRITES)' : 'disabled (read-only)'}. ` +
     `Default administration: ${defaultAdministration || '(none)'} — ${credInfo}\n`,
 );
