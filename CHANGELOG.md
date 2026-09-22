@@ -22,6 +22,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   time rather than with a 400 after `confirm: true`. Row descriptions now also
   state that a row ledger may not be FIN/CRED/DEB (MUT_106) and which VAT-code
   family the mutation type expects (MUT_110/MUT_111).
+- **Mutation `description` is capped at 50 characters**, the API's `maxLength`
+  on POST /v1/mutation, in `create_purchase_mutation`, `create_payment`,
+  `create_money_spent` and `create_money_received`, so an over-long description
+  fails at input time as well.
 - **`create_ledger`'s DEB/CRED warning is category-specific** — a new CRED ledger
   only affects `create_payment` (direction `"sent"`); the earlier wording also
   named `create_sales_invoice`, which never resolves a CRED ledger.

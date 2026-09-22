@@ -30,7 +30,9 @@ const MONEY_SENT_TYPE = 6; // Geld uitgegeven / money spent
  * Every VAT code POST /v1/mutation accepts (the `rows[].vatCode` enum in the
  * spec). Which subset a given mutation type takes is enforced server-side:
  * purchase-type codes (*_INK) on types 1/6 (MUT_110), sale-type codes (*_VERK)
- * on types 2/5 (MUT_111); GEEN and AFW are neutral.
+ * on types 2/5 (MUT_111); GEEN is neutral. AFW and AFW_VERK both take an
+ * explicit `vatAmount`; the spec labels only AFW_VERK as a sale code, so AFW is
+ * presumably the purchase-side variant (unverified).
  */
 const VAT_CODES = [
   'HOOG_VERK_21',
@@ -105,7 +107,7 @@ function registerMoneyMutationTool(server: McpServer, client: EboekhoudenClient,
           .optional()
           .describe('Whether row amounts include VAT ("IN", default) or exclude it ("EX").'),
         rows: z.array(mutationRowSchema(spec.ledgerHint, spec.vatHint)).min(1).describe(spec.rowsHint),
-        description: z.string().optional().describe('Optional mutation description.'),
+        description: z.string().max(50).optional().describe('Optional mutation description (max 50 chars).'),
         relationId: z.number().int().optional().describe('Optional relation id (usually omitted).'),
         confirm: z
           .boolean()
@@ -173,7 +175,7 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
           )
           .min(1)
           .describe('One or more cost lines making up the invoice.'),
-        description: z.string().optional().describe('Optional mutation description.'),
+        description: z.string().max(50).optional().describe('Optional mutation description (max 50 chars).'),
         termOfPayment: z.number().int().optional().describe('Payment term in days. Omit to take it from the relation.'),
         termOfPaymentDefault: z
           .number()
@@ -267,7 +269,7 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
           .int()
           .optional()
           .describe('Counter account: creditor (sent) or debtor (received). Auto-resolved when omitted.'),
-        description: z.string().optional().describe('Optional description (default "Betaling").'),
+        description: z.string().max(50).optional().describe('Optional description (default "Betaling", max 50 chars).'),
         confirm: z
           .boolean()
           .optional()
@@ -332,8 +334,8 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
       '`confirm: true`. Top-level `ledgerId` (here `bankLedgerId`) is the bank/cash account the ' +
       'money left from (category FIN); each row is an expense line with its ledger + purchase VAT ' +
       'code. Row ledgers may not be FIN/CRED/DEB (MUT_106) — for a transfer between your own ' +
-      'accounts book the sending leg here against a suspense account (kruisposten), see ' +
-      '`create_money_received`. No invoice number or relation is required.',
+      'accounts book the sending leg here against a suspense account (kruisposten) with vatCode ' +
+      '"GEEN", see `create_money_received`. No invoice number or relation is required.',
     bankHint: 'Bank/cash ledger id the money left from (category FIN).',
     ledgerHint: `Expense ledger id for this line (category VW, or a BAL suspense account). ${ROW_LEDGER_RESTRICTION}`,
     vatHint: 'Purchase VAT code (HOOG_INK_21, LAAG_INK_9, VERL_INK, GEEN, …); a sale code yields MUT_110.',
@@ -357,8 +359,8 @@ export function registerMutationWriteTools(server: McpServer, client: Eboekhoude
       'NOTE for internal transfers between your own accounts: book BOTH legs over a suspense ' +
       'account (kruisposten, category BAL) so it nets to zero — `create_money_spent` from the ' +
       'source account with a row on kruisposten, plus `create_money_received` into the destination ' +
-      'account with a row on that same kruisposten ledger. Booking only one leg leaves the ' +
-      'suspense account out of balance.',
+      'account with a row on that same kruisposten ledger. Both rows use vatCode "GEEN": a ' +
+      'transfer carries no VAT. Booking only one leg leaves the suspense account out of balance.',
     bankHint: 'Bank/cash ledger id the money arrived in (category FIN).',
     ledgerHint: `Counter-account ledger id for this line (e.g. revenue VW, or a BAL suspense account). ${ROW_LEDGER_RESTRICTION}`,
     vatHint: 'Sale VAT code (HOOG_VERK_21, LAAG_VERK_9, VERL_VERK, GEEN, …); a purchase code yields MUT_111.',

@@ -94,9 +94,9 @@ export function registerLedgerWriteTools(server: McpServer, client: EboekhoudenC
         '`create_payment` / `create_sales_invoice`; the response warns when that applies. ' +
         'On success the API returns only the new id (`{ "id": ... }`) — use `get_ledger` for the full ' +
         'record. That id can be used directly in `create_purchase_mutation` / `create_money_spent` / ' +
-        '`create_sales_invoice`. Corrections afterwards go through PATCH /v1/ledger/{id}, which this ' +
-        'server does not expose yet — so fix mistakes in the e-Boekhouden web UI. There is no DELETE ' +
-        'endpoint at all: a ledger can never be removed via the API.',
+        '`create_money_received` / `create_sales_invoice`. Corrections afterwards go through ' +
+        'PATCH /v1/ledger/{id}, which this server does not expose yet — so fix mistakes in the ' +
+        'e-Boekhouden web UI. There is no DELETE endpoint at all: a ledger can never be removed via the API.',
       inputSchema: {
         code: z.string().min(1).max(10).describe('Ledger code, e.g. "4200" (max 10 chars, must not exist yet).'),
         description: z.string().min(1).max(100).describe('Ledger description, e.g. "Huisvestingskosten".'),
