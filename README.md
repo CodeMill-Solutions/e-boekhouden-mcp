@@ -423,10 +423,13 @@ acquires/renews the session token and retries once on a 401.
 - **v1.0** — first stable release: received payments on sales invoices
   (`create_payment` `direction: "received"`) and sales-invoice processing into
   the accounting; the read + write tool set is considered stable.
-- **v1.1** (planned) — `create_ledger` (merged, still unreleased — see the
-  CHANGELOG's *Unreleased* section), plus the remaining write tools (products,
-  cost centers), an `update_ledger` wrapper around `PATCH /v1/ledger/{id}`, and
-  richer sales-invoice options (email/PDF, direct debit).
+- **v1.1** — `create_ledger` (general-ledger accounts); every write response
+  reports the target administration.
+- **v1.2** — `create_money_received` (*Geld ontvangen*, type 5), the mirror of
+  `create_money_spent`; mutation rows validate `vatCode` against the API's enum.
+- **Planned** — the remaining write tools (products, cost centers), an
+  `update_ledger` wrapper around `PATCH /v1/ledger/{id}`, and richer
+  sales-invoice options (email/PDF, direct debit).
 
 ---
 

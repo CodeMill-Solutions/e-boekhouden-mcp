@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.2.0] - 2026-09-22
 
 ### Added
 
@@ -31,7 +31,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   named `create_sales_invoice`, which never resolves a CRED ledger.
 - `.env.example` documents `EBOEKHOUDEN_DEBTOR_LEDGER_ID`.
 
-## [1.1.0] 2026-08-24
+## [1.1.0] - 2026-08-24
 
 ### Added
 
@@ -136,7 +136,9 @@ Initial read-only release built on the e-Boekhouden REST API
   `get_cost_centers`, `get_units`.
 - Standalone probe scripts: `npm run whoami`, `npm run list-administrations`.
 
-[Unreleased]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.3.0...v1.0.0
 [0.3.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/CodeMill-Solutions/e-boekhouden-mcp/compare/v0.1.0...v0.2.0
