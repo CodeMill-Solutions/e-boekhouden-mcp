@@ -122,7 +122,7 @@ If `whoami` returns your administration(s), you're ready.
 
 ---
 
-## Available tools (25)
+## Available tools (26)
 
 ### Auth & setup
 | Tool | Description |
@@ -165,6 +165,7 @@ If `whoami` returns your administration(s), you're ready.
 | `create_purchase_mutation` | **Write.** Create a purchase invoice (inkoopfactuur). Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
 | `create_payment` | **Write.** Register a payment against an invoice — purchase (sent, type 4) or sales (`direction: "received"`, type 3). Gated behind `EBOEKHOUDEN_ALLOW_WRITES`; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
 | `create_money_spent` | **Write.** Book money spent directly from a bank/cash account (Geld uitgegeven, type 6) — expenses without a purchase invoice. Gated; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
+| `create_money_received` | **Write.** Book money received into a bank/cash account (Geld ontvangen, type 5) — the mirror of `create_money_spent`, for income without a sales invoice or the receiving leg of an internal transfer. Gated; dry-run unless `confirm: true`. See [Writing data](#writing-data). |
 
 ### Invoices (verkoopfacturen)
 | Tool | Description |
@@ -191,6 +192,7 @@ The server is read-only out of the box. The write tools —
 `create_purchase_mutation` (purchase invoice / inkoopfactuur, `type: 1`),
 `create_payment` (payment against a purchase invoice, `type: 4`),
 `create_money_spent` (expense paid directly, *Geld uitgegeven*, `type: 6`),
+`create_money_received` (income without an invoice, *Geld ontvangen*, `type: 5`),
 `create_sales_invoice` (verkoopfactuur via the invoicing module),
 `create_relation` (supplier/customer) and `create_ledger` (grootboekrekening) —
 are each protected by two independent guards:
@@ -198,7 +200,9 @@ are each protected by two independent guards:
 1. **Environment gate** — writes are refused unless `EBOEKHOUDEN_ALLOW_WRITES`
    is set to a truthy value (`true`/`1`/`yes`/`on`). When unset, the tool is
    still listed (so agents can discover it) but every call returns
-   `blocked: true` together with the `plannedMutation` it *would* have sent.
+   `blocked: true` together with the planned request body it *would* have sent
+   (`plannedMutation`, `plannedPayment`/`plannedReceipt`, `plannedInvoice`,
+   `plannedRelation` or `plannedLedger`, depending on the tool).
 2. **Dry-run by default** — even with writes enabled, a call only books when
    `confirm: true` is passed. Otherwise it returns `dryRun: true` and the
    planned body for review.
@@ -396,7 +400,7 @@ src/
     relations-write.ts     # create_relation (gated write tool)
     write-helpers.ts       # shared write gate + body helpers
     mutations.ts           # get_mutation(s), outstanding invoices
-    mutations-write.ts     # create_purchase_mutation + create_payment + create_money_spent
+    mutations-write.ts     # create_purchase_mutation + create_payment + create_money_spent/received
     invoices.ts            # get_invoice(s)
     invoices-write.ts      # create_sales_invoice (gated write tool)
     masterdata.ts          # products, product groups, cost centers, units
@@ -419,10 +423,13 @@ acquires/renews the session token and retries once on a 401.
 - **v1.0** — first stable release: received payments on sales invoices
   (`create_payment` `direction: "received"`) and sales-invoice processing into
   the accounting; the read + write tool set is considered stable.
-- **v1.1** (planned) — `create_ledger` (merged, still unreleased — see the
-  CHANGELOG's *Unreleased* section), plus the remaining write tools (products,
-  cost centers), an `update_ledger` wrapper around `PATCH /v1/ledger/{id}`, and
-  richer sales-invoice options (email/PDF, direct debit).
+- **v1.1** — `create_ledger` (general-ledger accounts); every write response
+  reports the target administration.
+- **v1.2** — `create_money_received` (*Geld ontvangen*, type 5), the mirror of
+  `create_money_spent`; mutation rows validate `vatCode` against the API's enum.
+- **Planned** — the remaining write tools (products, cost centers), an
+  `update_ledger` wrapper around `PATCH /v1/ledger/{id}`, and richer
+  sales-invoice options (email/PDF, direct debit).
 
 ---
 

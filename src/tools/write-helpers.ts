@@ -3,8 +3,8 @@ import { ok, type ToolTextResult } from './result.js';
 
 /**
  * Shared helpers for the gated write tools (create_purchase_mutation,
- * create_payment, create_money_spent, create_sales_invoice, create_relation,
- * create_ledger).
+ * create_payment, create_money_spent, create_money_received,
+ * create_sales_invoice, create_relation, create_ledger).
  * Keeping the safety posture (env gate + dry-run) in one place means every write
  * tool behaves identically and a change is made once.
  */
