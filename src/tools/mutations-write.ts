@@ -17,7 +17,10 @@ import {
  *   1. env gate — refused unless EBOEKHOUDEN_ALLOW_WRITES is truthy;
  *   2. dry-run — only writes when `confirm: true`, otherwise echoes the body.
  *
- * Body shapes mirror the read shape of GET /v1/mutation/{id}.
+ * Body shapes mirror the read shape of GET /v1/mutation/{id}. The top-level
+ * `description` deliberately has no length cap: the spec declares
+ * `maxLength: 50`, but the live API accepts and stores longer descriptions in
+ * full (tested with 56 and 57 characters).
  */
 
 const PURCHASE_MUTATION_TYPE = 1; // Factuur ontvangen / invoice received
@@ -32,7 +35,11 @@ const MONEY_SENT_TYPE = 6; // Geld uitgegeven / money spent
  *
  * VERIFIED against the spec's error table: MUT_110 is "VAT code must be of type
  * purchase" and MUT_111 is "VAT code must be of type sale", and the NL VAT-code
- * table labels every code as Type = Purchase or Sale (GEEN has no type).
+ * table labels every code as Type = Purchase or Sale (GEEN has no type). One
+ * entry contradicts the naming: the table labels BI_EU_VERK (goods delivered
+ * within the EU, 0%) as Purchase. That is most likely a documentation error, as
+ * intra-EU deliveries are sales, but it is unverified — so for BI_EU_VERK the
+ * *_VERK = sale convention below has no backing from the table.
  *
  * NOT VERIFIED: which mutation type demands which family. The spec never ties
  * MUT_110/MUT_111 to a type, and we have not round-tripped a rejection against
